@@ -385,6 +385,15 @@ def main():
     doc.save(str(output_path))
     print(f"[✓] Title page saved: {output_path}")
 
+    # Copy DeclarationStatement.docx from CLASSICS to the manuscript folder
+    decl_src = PROJECT_ROOT / "CLASSICS" / "DeclarationStatement.docx"
+    decl_dst = Path(article_link) / "DeclarationStatement.docx"
+    if decl_src.exists():
+        shutil.copy2(str(decl_src), str(decl_dst))
+        print(f"[✓] DeclarationStatement copied: {decl_dst}")
+    else:
+        print(f"[!] DeclarationStatement.docx not found in CLASSICS — skipping")
+
 
 if __name__ == "__main__":
     main()
