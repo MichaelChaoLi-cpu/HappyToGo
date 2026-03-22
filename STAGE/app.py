@@ -339,6 +339,65 @@ def save_credit():
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
+# Routes — Filesystem path autocomplete
+# ---------------------------------------------------------------------------
+
+@app.route("/api/ls", methods=["GET"])
+def ls_dirs():
+    raw = request.args.get("path", "").strip()
+    if not raw:
+        raw = str(Path.home())
+    p = Path(raw).expanduser()
+    # If path doesn't exist as a dir, treat parent as dir and last part as prefix
+    if p.is_dir():
+        parent, prefix = p, ""
+    else:
+        parent, prefix = p.parent, p.name
+    if not parent.is_dir():
+        return jsonify({"entries": []})
+    try:
+        entries = sorted(
+            str(child) + ("/" if child.is_dir() else "")
+            for child in parent.iterdir()
+            if child.name.startswith(prefix) and not child.name.startswith(".")
+        )
+    except PermissionError:
+        entries = []
+    return jsonify({"entries": entries[:40]})
+
+
+# ---------------------------------------------------------------------------
+# Routes — Manuscript preview (title + abstract)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/manuscript_preview", methods=["GET"])
+def manuscript_preview():
+    folder   = request.args.get("folder", "").strip() or get_article_link()
+    filename = request.args.get("file", "").strip()
+    if not folder or not filename:
+        return jsonify({"title": "", "abstract": ""})
+    path = Path(folder) / filename
+    if not path.exists():
+        return jsonify({"title": "", "abstract": ""})
+    try:
+        from docx import Document
+        doc   = Document(str(path))
+        paras = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
+        title = paras[0] if paras else ""
+        # Find abstract: paragraph after one containing "abstract" (case-insensitive)
+        abstract = ""
+        for i, text in enumerate(paras):
+            if text.lower().startswith("abstract"):
+                # The heading itself may contain the abstract body, or the next para does
+                body = text[len("abstract"):].lstrip(": \n").strip()
+                abstract = body if body else (paras[i + 1] if i + 1 < len(paras) else "")
+                break
+        return jsonify({"title": title, "abstract": abstract})
+    except Exception as e:
+        return jsonify({"title": "", "abstract": "", "error": str(e)})
+
+
+# ---------------------------------------------------------------------------
 # Routes — Submission Log
 # ---------------------------------------------------------------------------
 

@@ -294,15 +294,37 @@
 
         <div class="field-group">
           <label>Article Folder <span class="required-star">*</span></label>
-          <input type="text" id="f-article_link" placeholder="/path/to/manuscript/folder">
+          <div style="position:relative;">
+            <input type="text" id="f-article_link" placeholder="/path/to/manuscript/folder"
+              style="width:100%;box-sizing:border-box;"
+              oninput="onFolderInput()"
+              onkeydown="handleFolderKey(event)"
+              onblur="closeFolderDropdown()"
+              autocomplete="off">
+            <div id="folder-dropdown" style="
+              display:none; position:absolute; left:0; right:0; top:100%; z-index:200;
+              background:#fff; border:1px solid #c0c0d8; border-top:none; border-radius:0 0 6px 6px;
+              max-height:220px; overflow-y:auto; box-shadow:0 4px 12px rgba(0,0,0,.1);
+              font-size:13px; font-family:monospace;
+            "></div>
+          </div>
           <p class="field-hint">Full path to the folder containing the manuscript.</p>
         </div>
 
         <div class="field-group">
           <label>Manuscript File <span class="required-star">*</span></label>
-          <select id="f-file_name" style="width:100%;padding:9px 12px;border:1px solid #dde;border-radius:6px;font-size:13px;color:#1a1a2e;outline:none;background:#fff;">
+          <select id="f-file_name" onchange="onManuscriptChange()"
+            style="width:100%;padding:9px 12px;border:1px solid #dde;border-radius:6px;font-size:13px;color:#1a1a2e;outline:none;background:#fff;">
             <option value="">— select after entering folder —</option>
           </select>
+        </div>
+
+        <!-- Manuscript preview -->
+        <div id="manuscript-preview" style="display:none; margin:-4px 0 16px; padding:16px 18px;
+             background:#f8f8fc; border:1px solid #dde; border-radius:8px; font-size:13px; line-height:1.6;">
+          <p id="ms-title" style="font-weight:700; color:#1a1a2e; margin-bottom:8px;"></p>
+          <p style="font-size:11px; font-weight:600; color:#999; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px;">Abstract</p>
+          <p id="ms-abstract" style="color:#444;"></p>
         </div>
 
         <div class="field-group">
@@ -712,6 +734,74 @@ function renderCorrespondingSelect(savedValue) {
     authorsList.map(n => `<option value="${esc(n)}" ${n === prev ? 'selected' : ''}>${esc(n)}</option>`).join('');
 }
 
+// ── Article Folder path autocomplete ──
+let folderDropdownIdx = -1;
+
+async function onFolderInput() {
+  const val = document.getElementById('f-article_link').value;
+  folderDropdownIdx = -1;
+  if (!val) { closeFolderDropdown(); return; }
+  const r = await fetch(`/api/ls?path=${encodeURIComponent(val)}`);
+  const d = await r.json();
+  showFolderDropdown(d.entries || []);
+  // Also reload docx list when folder changes
+  loadDocxFiles(val, '');
+}
+
+function showFolderDropdown(entries) {
+  const dd = document.getElementById('folder-dropdown');
+  if (!entries.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = entries.map((e, i) =>
+    `<div data-idx="${i}" data-val="${esc(e)}"
+      style="padding:7px 12px; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-bottom:1px solid #f0f0f8;"
+      onmousedown="selectFolderEntry('${esc(e)}')"
+      onmouseover="hoverFolderEntry(this)"
+    >${esc(e)}</div>`
+  ).join('');
+  dd.style.display = 'block';
+}
+
+function hoverFolderEntry(el) {
+  document.querySelectorAll('#folder-dropdown div').forEach(d => d.style.background = '');
+  el.style.background = '#f0f0f8';
+  folderDropdownIdx = parseInt(el.dataset.idx);
+}
+
+function selectFolderEntry(val) {
+  document.getElementById('f-article_link').value = val;
+  closeFolderDropdown();
+  loadDocxFiles(val, '');
+}
+
+function closeFolderDropdown() {
+  setTimeout(() => {
+    document.getElementById('folder-dropdown').style.display = 'none';
+  }, 120);
+}
+
+function handleFolderKey(e) {
+  const dd = document.getElementById('folder-dropdown');
+  const items = dd.querySelectorAll('div');
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    folderDropdownIdx = Math.min(folderDropdownIdx + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    folderDropdownIdx = Math.max(folderDropdownIdx - 1, 0);
+  } else if (e.key === 'Tab' || e.key === 'Enter') {
+    if (folderDropdownIdx >= 0 && items[folderDropdownIdx]) {
+      e.preventDefault();
+      selectFolderEntry(items[folderDropdownIdx].dataset.val);
+    }
+    return;
+  } else if (e.key === 'Escape') {
+    closeFolderDropdown(); return;
+  } else { return; }
+  items.forEach((d, i) => d.style.background = i === folderDropdownIdx ? '#f0f0f8' : '');
+  items[folderDropdownIdx]?.scrollIntoView({block:'nearest'});
+}
+
 // ── Manuscript file select ──
 async function loadDocxFiles(folder, savedFile) {
   const sel = document.getElementById('f-file_name');
@@ -720,6 +810,24 @@ async function loadDocxFiles(folder, savedFile) {
   const d = await r.json();
   sel.innerHTML = '<option value="">— select —</option>' +
     d.files.map(f => `<option value="${esc(f)}" ${f === savedFile ? 'selected' : ''}>${esc(f)}</option>`).join('');
+  if (savedFile) loadManuscriptPreview(folder, savedFile);
+}
+
+async function onManuscriptChange() {
+  const folder = document.getElementById('f-article_link').value.trim();
+  const file   = document.getElementById('f-file_name').value;
+  loadManuscriptPreview(folder, file);
+}
+
+async function loadManuscriptPreview(folder, file) {
+  const card = document.getElementById('manuscript-preview');
+  if (!file) { card.style.display = 'none'; return; }
+  const r = await fetch(`/api/manuscript_preview?folder=${encodeURIComponent(folder)}&file=${encodeURIComponent(file)}`);
+  const d = await r.json();
+  if (!d.title && !d.abstract) { card.style.display = 'none'; return; }
+  document.getElementById('ms-title').textContent    = d.title;
+  document.getElementById('ms-abstract').textContent = d.abstract || '(not found)';
+  card.style.display = 'block';
 }
 
 // ── Config load/save ──
