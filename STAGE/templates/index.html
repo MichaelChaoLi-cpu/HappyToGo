@@ -232,9 +232,17 @@
     <span class="icon">✨</span> Highlights
     <span class="nav-status" id="st-highlights"></span>
   </div>
+  <div class="nav-item" data-tab="credit">
+    <span class="icon">👥</span> Credit
+    <span class="nav-status" id="st-credit"></span>
+  </div>
   <div class="nav-item" data-tab="declaration">
     <span class="icon">📋</span> Declaration
     <span class="nav-status" id="st-declaration"></span>
+  </div>
+  <div class="nav-item" data-tab="submit">
+    <span class="icon">🚀</span> Submit
+    <span class="nav-status" id="st-submit"></span>
   </div>
 </nav>
 
@@ -258,6 +266,15 @@
         <span id="build-spin" class="spin hidden"></span>📄 Build DOCX
       </button>
     </div>
+    <!-- Credit actions -->
+    <div id="actions-credit" class="hidden">
+      <button class="btn btn-primary" onclick="saveCredit()">💾 Save</button>
+      <button class="btn btn-success" onclick="buildCredit()">
+        <span id="credit-spin" class="spin hidden"></span>📄 Build DOCX
+      </button>
+    </div>
+    <!-- Submit actions -->
+    <div id="actions-submit" class="hidden"></div>
     <!-- Declaration actions -->
     <div id="actions-declaration" class="hidden">
       <button class="btn btn-success" onclick="copyDeclaration()">📋 Copy to Folder</button>
@@ -382,6 +399,16 @@
       </div>
     </div>
 
+    <!-- CREDIT AUTHOR STATEMENT TAB -->
+    <div id="tab-credit" class="hidden" style="flex:1; flex-direction:column; overflow-y:auto;">
+      <div style="padding:32px 40px; max-width:900px;">
+        <p style="color:#666; font-size:13px; margin-bottom:24px;">
+          Select the CRediT roles for each author. Roles are listed in the order they appear in the output document.
+        </p>
+        <div id="credit-table"></div>
+      </div>
+    </div>
+
     <!-- DECLARATION TAB -->
     <div id="tab-declaration" class="hidden" style="flex:1; flex-direction:column;">
       <div style="padding:40px;">
@@ -394,6 +421,45 @@
           <p>☐ The authors declare the following financial interests/personal relationships which
           may be considered as potential competing interests:</p>
         </div>
+      </div>
+    </div>
+
+    <!-- SUBMIT TAB -->
+    <div id="tab-submit" class="hidden" style="flex:1; flex-direction:column; overflow-y:auto;">
+      <div style="padding:40px; max-width:600px;">
+
+        <!-- Submission card -->
+        <div style="background:#fff; border:1px solid #dde; border-radius:10px; padding:28px; margin-bottom:28px;">
+          <p style="font-weight:700; font-size:15px; color:#1a1a2e; margin-bottom:18px;">Log Submission</p>
+
+          <div class="field-group" style="margin-bottom:16px;">
+            <label style="font-size:12px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:.05em;">Journal</label>
+            <input type="text" id="submit-journal" placeholder="Nature Human Behaviour"
+              style="width:100%; padding:9px 12px; border:1px solid #dde; border-radius:6px;
+                     font-size:14px; color:#1a1a2e; outline:none; box-sizing:border-box; margin-top:6px;">
+          </div>
+
+          <div class="field-group" style="margin-bottom:20px;">
+            <label style="font-size:12px; font-weight:600; color:#555; text-transform:uppercase; letter-spacing:.05em;">Date &amp; Time</label>
+            <p id="submit-now" style="font-size:13px; color:#444; margin-top:6px; font-family:monospace;"></p>
+          </div>
+
+          <button class="btn btn-success" onclick="confirmSubmission()"
+            style="width:100%; justify-content:center; font-size:14px; padding:12px;">
+            ✅ Confirm Submission
+          </button>
+        </div>
+
+        <!-- Log history -->
+        <div>
+          <p style="font-size:12px; font-weight:600; color:#888; text-transform:uppercase; letter-spacing:.05em; margin-bottom:12px;">Submission History</p>
+          <div id="submit-log" style="font-family:monospace; font-size:13px; color:#333;
+               background:#f8f8fc; border:1px solid #dde; border-radius:8px; padding:16px;
+               min-height:60px; white-space:pre-line; line-height:1.8;">
+            —
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -422,10 +488,14 @@ function switchTab(tab) {
   // Show/hide panels
   show('tab-config',      tab === 'config');
   show('tab-doc',         docTabs.includes(tab));
+  show('tab-credit',      tab === 'credit');
   show('tab-declaration', tab === 'declaration');
+  show('tab-submit',      tab === 'submit');
 
   show('actions-config',      tab === 'config');
   show('actions-doc',         docTabs.includes(tab));
+  show('actions-credit',      tab === 'credit');
+  show('actions-submit',      tab === 'submit');
   show('actions-declaration', tab === 'declaration');
 
   document.getElementById('toolbar-title').textContent = {
@@ -433,11 +503,15 @@ function switchTab(tab) {
     title: 'Title Page',
     cover_letter: 'Cover Letter',
     highlights: 'Highlights',
+    credit: 'Credit Author Statement',
     declaration: 'Declaration Statement',
+    submit: 'Submission Log',
   }[tab] || tab;
 
   if (docTabs.includes(tab)) loadMd(tab);
   if (tab === 'config')      loadConfig();
+  if (tab === 'credit')      loadCredit();
+  if (tab === 'submit')      loadSubmitTab();
   if (tab === 'declaration') log('Declaration Statement will be copied from CLASSICS/.');
   if (tab === 'config')      loadFiles();
 }
@@ -755,6 +829,182 @@ async function copyDeclaration() {
   const d = await r.json();
   log(d.output);
   if (d.ok) { markDone('declaration', 'done'); loadFiles(); }
+}
+
+// ── Credit Author Statement ──
+let creditRoles   = [];
+let creditEntries = [];   // [{name, roles:[]}]
+
+async function loadCredit() {
+  const r = await fetch('/api/credit');
+  const d = await r.json();
+  creditRoles = d.roles || [];
+
+  // Build entries from current authors list (in order), merging saved roles
+  const savedMap = {};
+  (d.entries || []).forEach(e => { savedMap[e.name] = e.roles || []; });
+
+  // Use authorsList from config if available, else fall back to saved entries
+  const authors = authorsList.length ? authorsList
+    : (d.entries || []).map(e => e.name);
+
+  creditEntries = authors.map(name => ({
+    name,
+    roles: savedMap[name] || [],
+  }));
+
+  renderCreditTable();
+}
+
+function renderCreditTable() {
+  const el = document.getElementById('credit-table');
+  if (!el) return;
+
+  if (!creditEntries.length) {
+    el.innerHTML = '<p style="color:#999;">No authors configured. Set authors in Config first.</p>';
+    return;
+  }
+
+  // Transposed layout: rows = roles, cols = authors
+  // Grid: first col = role name, then one col per author
+  const authorCols = creditEntries.map((e, i) => i);
+
+  let html = `<div class="credit-grid" style="
+    display:grid;
+    grid-template-columns: 180px repeat(${creditEntries.length}, 1fr);
+    gap:0;
+    border:1px solid #dde;
+    border-radius:8px;
+    overflow:hidden;
+    font-size:13px;
+  ">`;
+
+  // Header row: blank corner + author names
+  html += `<div style="background:#f0f0f8;padding:10px 14px;border-right:1px solid #dde;border-bottom:1px solid #dde;"></div>`;
+  creditEntries.forEach(entry => {
+    html += `<div style="background:#f0f0f8;font-weight:700;padding:10px 8px;text-align:center;border-right:1px solid #dde;border-bottom:1px solid #dde;">${entry.name}</div>`;
+  });
+
+  // Role rows
+  creditRoles.forEach((role, ri) => {
+    const rowBg = ri % 2 === 0 ? '#fff' : '#fafafa';
+    html += `<div style="background:${rowBg};padding:9px 14px;font-weight:500;border-right:1px solid #dde;border-bottom:1px solid #dde;">${role}</div>`;
+    creditEntries.forEach((entry, ei) => {
+      const checked = entry.roles.includes(role) ? 'checked' : '';
+      html += `<div style="background:${rowBg};text-align:center;border-right:1px solid #dde;border-bottom:1px solid #dde;padding:9px 0;">
+        <input type="checkbox" ${checked}
+          onchange="toggleCreditRole(${ei}, '${role.replace(/'/g,"\\'")}', this.checked)"
+          style="width:15px;height:15px;cursor:pointer;">
+      </div>`;
+    });
+  });
+
+  html += '</div>';
+
+  // Preview block below table
+  html += '<div style="margin-top:28px;">';
+  html += '<p style="font-size:12px;color:#888;font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em;">Preview</p>';
+  html += '<div id="credit-preview" class="doc-paper" style="max-width:100%;"></div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+  updateCreditPreview();
+}
+
+function toggleCreditRole(authorIdx, role, checked) {
+  const entry = creditEntries[authorIdx];
+  if (!entry) return;
+  if (checked) {
+    if (!entry.roles.includes(role)) {
+      // Insert in canonical order
+      entry.roles = creditRoles.filter(r => entry.roles.includes(r) || r === role);
+    }
+  } else {
+    entry.roles = entry.roles.filter(r => r !== role);
+  }
+  updateCreditPreview();
+}
+
+function updateCreditPreview() {
+  const el = document.getElementById('credit-preview');
+  if (!el) return;
+  let html = '<p class="doc-bold">Credit Author Statement</p><p>&nbsp;</p>';
+  creditEntries.forEach(e => {
+    if (e.roles.length) {
+      html += `<p><strong>${e.name}:</strong> ${e.roles.join(', ')}</p>`;
+    }
+  });
+  el.innerHTML = html;
+}
+
+async function saveCredit() {
+  log('Saving Credit Author Statement…');
+  const r = await fetch('/api/credit', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({entries: creditEntries}),
+  });
+  const d = await r.json();
+  if (d.ok) log('Saved → _temp/CreditAuthorStatement.json');
+  else log('Save failed');
+}
+
+async function buildCredit() {
+  await saveCredit();
+  const spin = document.getElementById('credit-spin');
+  spin.classList.remove('hidden');
+  log('Building CreditAuthorStatement.docx…');
+  const r = await fetch('/api/build/credit', {method:'POST'});
+  const d = await r.json();
+  spin.classList.add('hidden');
+  log(d.output);
+  if (d.ok) { markDone('credit', 'done'); loadFiles(); }
+}
+
+// ── Submission Log ──
+async function loadSubmitTab() {
+  // Update live clock
+  updateSubmitClock();
+
+  const r = await fetch('/api/submission');
+  const d = await r.json();
+
+  // Pre-fill journal from config
+  const jInput = document.getElementById('submit-journal');
+  if (jInput && !jInput.value) jInput.value = d.journal || '';
+
+  // Render history
+  const logEl = document.getElementById('submit-log');
+  if (logEl) logEl.textContent = d.lines.length ? d.lines.join('\n') : '— no submissions logged yet —';
+}
+
+function updateSubmitClock() {
+  const el = document.getElementById('submit-now');
+  if (!el) return;
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  el.textContent = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}  ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+async function confirmSubmission() {
+  const journal = document.getElementById('submit-journal').value.trim();
+  if (!journal) { log('Please enter a journal name.'); return; }
+
+  if (!confirm(`Log submission to "${journal}"?`)) return;
+
+  const r = await fetch('/api/submission', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({journal}),
+  });
+  const d = await r.json();
+  if (d.ok) {
+    log(`Logged: ${d.line}`);
+    markDone('submit', 'done');
+    await loadSubmitTab();
+  } else {
+    log(`Error: ${d.error}`);
+  }
 }
 
 // ── Preview rendering ──

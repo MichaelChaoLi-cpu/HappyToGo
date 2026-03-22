@@ -36,6 +36,7 @@ SCRIPTS = {
     "title":        "title_creator.py",
     "cover_letter": "cover_letter_creator.py",
     "highlights":   "highlight_creator.py",
+    "credit":       "credit_author_statement_creator.py",
 }
 
 def run_script(script_name: str, extra_args: list[str] = []) -> dict:
@@ -298,6 +299,84 @@ def list_files():
         return jsonify({"files": []})
     files = [f.name for f in sorted(folder.iterdir()) if f.suffix in (".docx", ".pdf", ".md")]
     return jsonify({"files": files, "folder": str(folder)})
+
+
+# ---------------------------------------------------------------------------
+# Routes — Credit Author Statement
+# ---------------------------------------------------------------------------
+
+CREDIT_ROLES = [
+    "Conceptualization", "Methodology", "Software", "Validation",
+    "Formal analysis", "Investigation", "Data Curation", "Data Processing",
+    "Original Draft", "Review & Editing", "Visualization",
+    "Resources", "Supervision", "Project administration", "Funding acquisition",
+]
+
+CREDIT_JSON = TEMP_DIR / "CreditAuthorStatement.json"
+
+
+@app.route("/api/credit", methods=["GET"])
+def get_credit():
+    import json
+    entries = []
+    if CREDIT_JSON.exists():
+        try:
+            entries = json.loads(CREDIT_JSON.read_text(encoding="utf-8"))
+        except Exception:
+            entries = []
+    return jsonify({"roles": CREDIT_ROLES, "entries": entries})
+
+
+@app.route("/api/credit", methods=["POST"])
+def save_credit():
+    import json
+    entries = request.json.get("entries", [])
+    TEMP_DIR.mkdir(exist_ok=True)
+    CREDIT_JSON.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Routes — Submission Log
+# ---------------------------------------------------------------------------
+
+SUBMISSION_LOG_NAME = "submission_log.txt"
+
+
+@app.route("/api/submission", methods=["GET"])
+def get_submission_log():
+    article_link = get_article_link()
+    if not article_link:
+        return jsonify({"lines": [], "journal": ""})
+    log_path = Path(article_link) / SUBMISSION_LOG_NAME
+    lines = []
+    if log_path.exists():
+        lines = [l for l in log_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    # Also return current journal from .input for convenience
+    data = parse_input_fields(INPUT_FILE)
+    journal = data.get("journal_name", "")
+    return jsonify({"lines": lines, "journal": journal})
+
+
+@app.route("/api/submission", methods=["POST"])
+def log_submission():
+    from datetime import datetime
+    article_link = get_article_link()
+    if not article_link:
+        return jsonify({"ok": False, "error": "article_link not set"})
+    journal = request.json.get("journal", "").strip()
+    if not journal:
+        return jsonify({"ok": False, "error": "journal name required"})
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    line = f"{now}  →  {journal}"
+    log_path = Path(article_link) / SUBMISSION_LOG_NAME
+    existing = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+    if existing and not existing.endswith("\n"):
+        existing += "\n"
+    log_path.write_text(existing + line + "\n", encoding="utf-8")
+    return jsonify({"ok": True, "line": line})
 
 
 # ---------------------------------------------------------------------------
