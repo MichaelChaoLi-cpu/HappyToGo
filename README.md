@@ -100,7 +100,7 @@ corresponding='First Last'
 ## Running the Web UI
 
 ```bash
-./MikeWebTools/HappyToGo.sh
+python STAGE/app.py
 ```
 
 Then open [http://127.0.0.1:5050](http://127.0.0.1:5050).
