@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HappyToGo — Document Studio</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         background: #f0f2f5; color: #1a1a2e; display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 220px; flex-shrink: 0; background: #1a1a2e; color: #c8d0e7;
+    display: flex; flex-direction: column; padding: 0;
+  }
+  #sidebar h1 { font-size: 14px; font-weight: 700; letter-spacing: .08em;
+                color: #fff; padding: 20px 18px 16px; border-bottom: 1px solid #2d2d4e; }
+  #sidebar h1 span { color: #7c83fd; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 18px; cursor: pointer; font-size: 13px; font-weight: 500;
+    border-left: 3px solid transparent; transition: all .15s;
+  }
+  .nav-item:hover   { background: #252540; color: #fff; }
+  .nav-item.active  { background: #252540; color: #fff; border-left-color: #7c83fd; }
+  .nav-item .icon   { font-size: 16px; width: 20px; text-align: center; }
+  .nav-status { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; background: #3d3d5c; }
+  .nav-status.done  { background: #4caf50; }
+  .nav-status.ready { background: #ffa726; }
+
+  /* ── Main ── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* ── Toolbar ── */
+  #toolbar {
+    background: #fff; border-bottom: 1px solid #e0e4ef;
+    padding: 12px 24px; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  #toolbar h2 { font-size: 15px; font-weight: 600; flex: 1; }
+  .btn {
+    padding: 7px 16px; border: none; border-radius: 6px; font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: #7c83fd; color: #fff; }
+  .btn-primary:hover { background: #6369f0; }
+  .btn-secondary { background: #f0f2f5; color: #444; }
+  .btn-secondary:hover { background: #e0e4ef; }
+  .btn-success { background: #4caf50; color: #fff; }
+  .btn-success:hover { background: #43a047; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* ── Content area ── */
+  #content { flex: 1; display: flex; overflow: hidden; }
+
+  /* ── Editor / Preview panes ── */
+  .pane { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .pane + .pane { border-left: 1px solid #e0e4ef; }
+  .pane-header {
+    padding: 8px 16px; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: #888; background: #f9fafb; border-bottom: 1px solid #e0e4ef;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .pane-header .char-info { margin-left: auto; font-size: 11px; color: #aaa; font-weight: 400; letter-spacing: 0; }
+
+  textarea {
+    flex: 1; padding: 20px; font-family: "SF Mono", "Fira Code", monospace;
+    font-size: 13px; line-height: 1.65; border: none; outline: none; resize: none;
+    background: #fff; color: #2d2d44;
+  }
+
+  /* ── Doc preview ── */
+  #preview-pane { overflow-y: auto; padding: 40px; background: #fff; }
+
+  /* Word-like paper */
+  .doc-paper {
+    max-width: 680px; margin: 0 auto; background: #fff;
+    box-shadow: 0 2px 12px rgba(0,0,0,.08); padding: 56px 64px;
+    font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.5; color: #000;
+  }
+  .doc-paper p { margin: 0 0 10px; }
+  .doc-paper .doc-bold { font-weight: bold; }
+  .doc-paper .doc-title { font-size: 13pt; font-weight: bold; margin-bottom: 8px; }
+  .doc-paper .doc-journal { font-weight: bold; margin-bottom: 8px; }
+  .doc-paper .doc-section-label { font-weight: bold; margin: 12px 0 4px; }
+  .doc-paper sup { font-size: 8pt; vertical-align: super; }
+  .doc-paper .doc-separator { border: none; border-top: 1px solid #ccc; margin: 12px 0; }
+  .doc-paper .hl-item { margin: 4px 0; display: flex; align-items: baseline; gap: 8px; }
+  .doc-paper .hl-chars { font-family: monospace; font-size: 9pt; color: #999; white-space: nowrap; }
+  .doc-paper .hl-over  { color: #e53935; }
+
+  /* ── Console log ── */
+  #log-bar {
+    background: #1a1a2e; color: #7ecfaa; font-family: monospace; font-size: 12px;
+    padding: 6px 20px; min-height: 28px; max-height: 120px; overflow-y: auto;
+    white-space: pre-wrap; flex-shrink: 0;
+  }
+  #log-bar .err { color: #ff6b6b; }
+
+  /* ── Config pane ── */
+  #config-pane { padding: 32px 40px; overflow-y: auto; background: #fff; flex: 1; max-width: 680px; }
+  .field-group { margin-bottom: 20px; }
+  .field-group label {
+    display: block; font-size: 12px; font-weight: 600; color: #555;
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px;
+  }
+  .field-group .required-star { color: #e53935; margin-left: 2px; }
+  .field-group input[type=text] {
+    width: 100%; padding: 9px 12px; border: 1px solid #dde; border-radius: 6px;
+    font-size: 13px; color: #1a1a2e; outline: none; transition: border .15s;
+  }
+  .field-group input[type=text]:focus { border-color: #7c83fd; }
+  .field-hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+  /* ── Autocomplete dropdown ── */
+  .autocomplete-wrap { position: relative; }
+  .autocomplete-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+    background: #fff; border: 1px solid #dde; border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.1); max-height: 200px; overflow-y: auto;
+    margin-top: 2px;
+  }
+  .autocomplete-dropdown.hidden { display: none; }
+  .ac-item {
+    padding: 8px 12px; font-size: 13px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ac-item:hover, .ac-item.ac-selected { background: #f0f2ff; color: #4a50c8; }
+  .ac-item .ac-new { font-size: 10px; background: #4caf50; color: #fff;
+                     border-radius: 3px; padding: 1px 5px; }
+
+  /* ── NameList manager panel ── */
+  #namelist-panel {
+    width: 300px; flex-shrink: 0; border-left: 1px solid #e0e4ef;
+    background: #fafbff; display: flex; flex-direction: column; overflow: hidden;
+  }
+  #namelist-panel .nl-header {
+    padding: 14px 16px 10px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .07em; color: #888;
+    border-bottom: 1px solid #e0e4ef; display: flex; align-items: center; gap: 8px;
+  }
+  #namelist-panel .nl-header span { flex: 1; }
+  #nl-list { flex: 1; overflow-y: auto; padding: 6px 8px; }
+  .nl-card {
+    border: 1px solid #e8eaf0; border-radius: 7px; padding: 9px 10px;
+    margin-bottom: 6px; background: #fff; position: relative;
+  }
+  .nl-card:hover { border-color: #c5c9e8; }
+  .nl-card .nl-name { font-size: 13px; font-weight: 600; color: #1a1a2e; margin-bottom: 3px; }
+  .nl-card .nl-meta { font-size: 11px; color: #888; display: flex; flex-direction: column; gap: 2px; }
+  .nl-card .nl-meta span { display: flex; align-items: center; gap: 4px; }
+  .nl-card .nl-copy {
+    cursor: pointer; font-size: 10px; color: #bbb; padding: 1px 4px;
+    border: 1px solid #e0e0e0; border-radius: 3px; background: #f8f8f8;
+    user-select: none;
+  }
+  .nl-card .nl-copy:hover { background: #eef0ff; color: #4a50c8; border-color: #9ca0d8; }
+  .nl-card .nl-del {
+    position: absolute; top: 7px; right: 8px; cursor: pointer;
+    color: #ddd; font-size: 15px; line-height: 1;
+  }
+  .nl-card .nl-del:hover { color: #e53935; }
+  /* Add person form */
+  #nl-add-form { padding: 8px; border-top: 1px solid #e0e4ef; }
+  .nl-add-input {
+    width: 100%; padding: 5px 8px; border: 1px solid #dde; border-radius: 5px;
+    font-size: 12px; outline: none; margin-bottom: 4px;
+  }
+  .nl-add-input:focus { border-color: #7c83fd; }
+  .nl-add-input::placeholder { color: #ccc; }
+
+  /* Tag/chip input for authors list */
+  .tag-input-wrap {
+    border: 1px solid #dde; border-radius: 6px; padding: 6px 8px;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    cursor: text; transition: border .15s; min-height: 40px;
+  }
+  .tag-input-wrap:focus-within { border-color: #7c83fd; }
+  .tag {
+    background: #eef0ff; color: #4a50c8; border-radius: 4px;
+    padding: 3px 8px; font-size: 12px; font-weight: 500;
+    display: flex; align-items: center; gap: 4px; white-space: nowrap;
+  }
+  .tag-del { cursor: pointer; color: #9ca0d8; font-size: 14px; line-height: 1; }
+  .tag-del:hover { color: #e53935; }
+  .tag-input {
+    border: none; outline: none; font-size: 13px; min-width: 140px;
+    flex: 1; padding: 2px 4px; background: transparent;
+  }
+  .field-divider {
+    border: none; border-top: 1px solid #f0f2f5; margin: 28px 0 20px;
+  }
+  .field-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: #bbb; margin-bottom: 16px;
+  }
+  .files-list { margin-top: 28px; padding-top: 20px; border-top: 1px solid #f0f2f5; }
+  .files-list h3 { font-size: 12px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: .05em; color: #bbb; margin-bottom: 10px; }
+  .file-tag {
+    display: inline-block; background: #f0f2f5; border-radius: 4px;
+    padding: 3px 10px; font-size: 12px; margin: 3px; color: #555;
+  }
+
+  /* ── Spinner ── */
+  .spin { display: inline-block; width: 14px; height: 14px;
+          border: 2px solid rgba(255,255,255,.4); border-top-color: #fff;
+          border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<nav id="sidebar">
+  <h1>Happy<span>ToGo</span></h1>
+  <div class="nav-item active" data-tab="config">
+    <span class="icon">⚙️</span> Config
+    <span class="nav-status" id="st-config"></span>
+  </div>
+  <div class="nav-item" data-tab="title">
+    <span class="icon">📄</span> Title
+    <span class="nav-status" id="st-title"></span>
+  </div>
+  <div class="nav-item" data-tab="cover_letter">
+    <span class="icon">✉️</span> Cover Letter
+    <span class="nav-status" id="st-cover_letter"></span>
+  </div>
+  <div class="nav-item" data-tab="highlights">
+    <span class="icon">✨</span> Highlights
+    <span class="nav-status" id="st-highlights"></span>
+  </div>
+  <div class="nav-item" data-tab="declaration">
+    <span class="icon">📋</span> Declaration
+    <span class="nav-status" id="st-declaration"></span>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<div id="main">
+
+  <!-- Toolbar -->
+  <div id="toolbar">
+    <h2 id="toolbar-title">Config</h2>
+    <!-- Config actions -->
+    <div id="actions-config">
+      <button class="btn btn-primary" onclick="saveConfig()">💾 Save</button>
+    </div>
+    <!-- Doc actions -->
+    <div id="actions-doc" class="hidden">
+      <button class="btn btn-primary" id="btn-generate" onclick="generateDoc()">
+        <span id="gen-spin" class="spin hidden"></span>⚡ Generate
+      </button>
+      <button class="btn btn-secondary" id="btn-save-md" onclick="saveMd()">💾 Save MD</button>
+      <button class="btn btn-success" id="btn-build" onclick="buildDoc()">
+        <span id="build-spin" class="spin hidden"></span>📄 Build DOCX
+      </button>
+    </div>
+    <!-- Declaration actions -->
+    <div id="actions-declaration" class="hidden">
+      <button class="btn btn-success" onclick="copyDeclaration()">📋 Copy to Folder</button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div id="content">
+
+    <!-- CONFIG TAB -->
+    <div id="tab-config" class="pane" style="flex-direction:row; overflow:hidden;">
+
+      <!-- Left: form fields -->
+      <div id="config-pane" style="flex:1; overflow-y:auto;">
+
+        <p class="field-section-title">Project</p>
+
+        <div class="field-group">
+          <label>Article Folder <span class="required-star">*</span></label>
+          <input type="text" id="f-article_link" placeholder="/path/to/manuscript/folder">
+          <p class="field-hint">Full path to the folder containing the manuscript.</p>
+        </div>
+
+        <div class="field-group">
+          <label>Manuscript File <span class="required-star">*</span></label>
+          <select id="f-file_name" style="width:100%;padding:9px 12px;border:1px solid #dde;border-radius:6px;font-size:13px;color:#1a1a2e;outline:none;background:#fff;">
+            <option value="">— select after entering folder —</option>
+          </select>
+        </div>
+
+        <div class="field-group">
+          <label>Target Journal</label>
+          <input type="text" id="f-journal_name" placeholder="Nature Human Behaviour">
+        </div>
+
+        <hr class="field-divider">
+        <p class="field-section-title">Authors</p>
+
+        <div class="field-group">
+          <label>Authors</label>
+          <!-- Tag input with autocomplete -->
+          <div class="autocomplete-wrap">
+            <div class="tag-input-wrap" id="authors-wrap"
+                 onclick="document.getElementById('author-input').focus()">
+              <input id="author-input" class="tag-input"
+                     placeholder="Type to search or add…"
+                     oninput="onAuthorInput()"
+                     onfocus="onAuthorFocus()"
+                     onkeydown="handleAuthorKey(event)"
+                     onblur="closeDropdown()"
+                     autocomplete="off">
+            </div>
+            <div id="author-dropdown" class="autocomplete-dropdown hidden"></div>
+          </div>
+          <p class="field-hint">Search NameList or type a new name and press Enter.</p>
+        </div>
+
+        <div class="field-group">
+          <label>Corresponding Author</label>
+          <select id="f-corresponding" style="width:100%;padding:9px 12px;border:1px solid #dde;border-radius:6px;font-size:13px;color:#1a1a2e;outline:none;background:#fff;">
+            <option value="">— add authors first —</option>
+          </select>
+        </div>
+
+        <hr class="field-divider">
+        <p class="field-section-title">Output Filenames <span style="font-weight:400;color:#ccc">(optional)</span></p>
+
+        <div class="field-group">
+          <label>Cover Letter</label>
+          <input type="text" id="f-cover_letter_name" placeholder="CoverLetter.docx">
+        </div>
+        <div class="field-group">
+          <label>Title Page</label>
+          <input type="text" id="f-title_name" placeholder="Title.docx">
+        </div>
+        <div class="field-group">
+          <label>Highlights</label>
+          <input type="text" id="f-highlight_name" placeholder="Highlights.docx">
+        </div>
+
+        <div class="files-list">
+          <h3 id="files-folder-label">Output Files</h3>
+          <div id="files-list-inner"></div>
+        </div>
+
+      </div>
+
+      <!-- Right: NameList manager -->
+      <div id="namelist-panel">
+        <div class="nl-header">
+          <span>📋 InfoCenter · NameList</span>
+          <button class="btn btn-secondary" style="padding:3px 10px;font-size:11px;"
+                  onclick="saveNamelist()">Save</button>
+        </div>
+        <div id="nl-list"></div>
+        <div id="nl-add-form">
+          <input class="nl-add-input" id="nl-inp-name"        placeholder="Name *" onkeydown="if(event.key==='Enter') nlAddPerson()">
+          <input class="nl-add-input" id="nl-inp-institution" placeholder="Institution">
+          <input class="nl-add-input" id="nl-inp-email"       placeholder="Email">
+          <button class="btn btn-primary" style="width:100%;padding:5px;font-size:12px;justify-content:center;"
+                  onclick="nlAddPerson()">+ Add to NameList</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- EDITOR TAB (title / cover_letter / highlights) -->
+    <div id="tab-doc" class="hidden" style="display:flex; flex:1;">
+      <div class="pane">
+        <div class="pane-header">
+          Markdown Editor
+          <span class="char-info" id="editor-info"></span>
+        </div>
+        <textarea id="md-editor" spellcheck="false"
+                  oninput="onEditorInput()" placeholder="Click Generate to create content…"></textarea>
+      </div>
+      <div class="pane" id="preview-pane">
+        <div class="pane-header">Preview</div>
+        <div id="preview-content" style="padding:40px; overflow-y:auto; flex:1;">
+          <div class="doc-paper" id="doc-paper"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DECLARATION TAB -->
+    <div id="tab-declaration" class="hidden" style="flex:1; flex-direction:column;">
+      <div style="padding:40px;">
+        <div class="doc-paper">
+          <p class="doc-bold">Declaration of interests</p>
+          <p>&nbsp;</p>
+          <p>☒ The authors declare that they have no known competing financial interests or personal
+          relationships that could have appeared to influence the work reported in this paper.</p>
+          <p>&nbsp;</p>
+          <p>☐ The authors declare the following financial interests/personal relationships which
+          may be considered as potential competing interests:</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+  <!-- Log bar -->
+  <div id="log-bar">Ready.</div>
+
+</div><!-- /main -->
+
+<script>
+// ── State ──
+let currentTab = 'config';
+const docTabs  = ['title', 'cover_letter', 'highlights'];
+
+// ── Navigation ──
+document.querySelectorAll('.nav-item').forEach(el => {
+  el.addEventListener('click', () => switchTab(el.dataset.tab));
+});
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.classList.toggle('active', el.dataset.tab === tab));
+
+  // Show/hide panels
+  show('tab-config',      tab === 'config');
+  show('tab-doc',         docTabs.includes(tab));
+  show('tab-declaration', tab === 'declaration');
+
+  show('actions-config',      tab === 'config');
+  show('actions-doc',         docTabs.includes(tab));
+  show('actions-declaration', tab === 'declaration');
+
+  document.getElementById('toolbar-title').textContent = {
+    config: 'Configuration',
+    title: 'Title Page',
+    cover_letter: 'Cover Letter',
+    highlights: 'Highlights',
+    declaration: 'Declaration Statement',
+  }[tab] || tab;
+
+  if (docTabs.includes(tab)) loadMd(tab);
+  if (tab === 'config')      loadConfig();
+  if (tab === 'declaration') log('Declaration Statement will be copied from CLASSICS/.');
+  if (tab === 'config')      loadFiles();
+}
+
+function show(id, visible) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('hidden', !visible);
+  if (visible && el.style.display === 'none') el.style.display = '';
+}
+
+// ── State ──
+let nameList    = [];   // [{name, institution, email}]
+let authorsList = [];   // ordered author names for current paper
+let acIndex     = -1;
+
+// ── NameList load/save ──
+async function loadNamelist() {
+  const r = await fetch('/api/namelist');
+  const d = await r.json();
+  nameList = d.persons || [];
+  renderNlPanel();
+}
+
+async function saveNamelist() {
+  await fetch('/api/namelist/all', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({persons: nameList})
+  });
+  log('NameList saved.');
+}
+
+function nlPersonByName(name) {
+  return nameList.find(p => p.name === name) || null;
+}
+
+// ── NameList panel rendering ──
+function renderNlPanel() {
+  const el = document.getElementById('nl-list');
+  if (!el) return;
+  el.innerHTML = nameList.map((p, i) => {
+    const instHtml = p.institution
+      ? `<span>🏛 ${esc(p.institution)} <span class="nl-copy" onclick="copyText('${esc(p.institution)}')">copy</span></span>`
+      : `<span style="color:#ddd">🏛 —</span>`;
+    const emailHtml = p.email
+      ? `<span>✉ ${esc(p.email)} <span class="nl-copy" onclick="copyText('${esc(p.email)}')">copy</span></span>`
+      : `<span style="color:#ddd">✉ —</span>`;
+    return `<div class="nl-card">
+      <div class="nl-name">${esc(p.name)}</div>
+      <div class="nl-meta">${instHtml}${emailHtml}</div>
+      <span class="nl-del" onclick="nlRemove(${i})">×</span>
+    </div>`;
+  }).join('');
+}
+
+function nlRemove(i) { nameList.splice(i, 1); renderNlPanel(); }
+
+function nlAddPerson() {
+  const name = document.getElementById('nl-inp-name').value.trim();
+  if (!name) return;
+  if (nameList.some(p => p.name === name)) { log(`"${name}" already in NameList.`); return; }
+  const person = {
+    name,
+    institution: document.getElementById('nl-inp-institution').value.trim(),
+    email:       document.getElementById('nl-inp-email').value.trim(),
+  };
+  nameList.push(person);
+  renderNlPanel();
+  fetch('/api/namelist', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({persons: [person]})
+  });
+  ['nl-inp-name','nl-inp-institution','nl-inp-email'].forEach(id =>
+    document.getElementById(id).value = '');
+  log(`"${name}" added to NameList.`);
+}
+
+function copyText(text) {
+  navigator.clipboard.writeText(text).then(() => log(`Copied: ${text}`));
+}
+
+// ── Author autocomplete dropdown ──
+function showAuthorDropdown(q) {
+  const dropdown = document.getElementById('author-dropdown');
+  acIndex = -1;
+  const ql = q.toLowerCase();
+  const available = nameList.filter(p => !authorsList.includes(p.name));
+  const matches = q
+    ? available.filter(p => p.name.toLowerCase().includes(ql))
+    : available;
+  const isNew = q && !nameList.some(p => p.name.toLowerCase() === ql);
+
+  if (!matches.length && !isNew) { dropdown.classList.add('hidden'); return; }
+
+  dropdown.innerHTML = [
+    ...matches.map(p => {
+      const sub = p.institution ? `<small style="color:#aaa;margin-left:6px">${esc(p.institution)}</small>` : '';
+      return `<div class="ac-item" onmousedown="addAuthor('${esc(p.name)}')">${esc(p.name)}${sub}</div>`;
+    }),
+    isNew ? `<div class="ac-item" onmousedown="addAuthorNew()">
+               Add "<strong>${esc(q)}</strong>" <span class="ac-new">new</span></div>` : ''
+  ].join('');
+  dropdown.classList.remove('hidden');
+}
+
+function onAuthorInput() {
+  showAuthorDropdown(document.getElementById('author-input').value.trim());
+}
+
+function onAuthorFocus() {
+  showAuthorDropdown(document.getElementById('author-input').value.trim());
+}
+
+function closeDropdown() {
+  setTimeout(() => document.getElementById('author-dropdown').classList.add('hidden'), 150);
+}
+
+function handleAuthorKey(e) {
+  const items = document.getElementById('author-dropdown').querySelectorAll('.ac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acIndex = Math.min(acIndex + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('ac-selected', i === acIndex));
+    return;
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acIndex = Math.max(acIndex - 1, 0);
+    items.forEach((el, i) => el.classList.toggle('ac-selected', i === acIndex));
+    return;
+  }
+  if (e.key === 'Enter' || e.key === ',') {
+    e.preventDefault();
+    if (acIndex >= 0 && items[acIndex]) {
+      items[acIndex].dispatchEvent(new MouseEvent('mousedown'));
+    } else {
+      const name = e.target.value.replace(/,/g,'').trim();
+      if (name) addAuthorNew(name);
+    }
+    return;
+  }
+  if (e.key === 'Backspace' && !e.target.value && authorsList.length) {
+    authorsList.pop(); renderAuthorTags(); renderCorrespondingSelect();
+  }
+}
+
+function addAuthor(name) {
+  if (!authorsList.includes(name)) {
+    authorsList.push(name);
+    renderAuthorTags();
+    renderCorrespondingSelect();
+  }
+  document.getElementById('author-input').value = '';
+  document.getElementById('author-dropdown').classList.add('hidden');
+}
+
+function addAuthorNew(nameArg) {
+  const name = nameArg || document.getElementById('author-input').value.replace(/,/g,'').trim();
+  if (!name) return;
+  addAuthor(name);
+  if (!nameList.some(p => p.name === name)) {
+    const person = {name, institution: '', email: ''};
+    nameList.push(person);
+    renderNlPanel();
+    fetch('/api/namelist', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({persons: [person]})
+    });
+    log(`"${name}" added to NameList.`);
+  }
+  document.getElementById('author-input').value = '';
+  document.getElementById('author-dropdown').classList.add('hidden');
+}
+
+function removeAuthor(i) {
+  authorsList.splice(i, 1);
+  renderAuthorTags();
+  renderCorrespondingSelect();
+}
+
+function renderAuthorTags() {
+  const wrap  = document.getElementById('authors-wrap');
+  const input = document.getElementById('author-input');
+  wrap.querySelectorAll('.tag').forEach(t => t.remove());
+  authorsList.forEach((name, i) => {
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.innerHTML = `${esc(name)} <span class="tag-del" onclick="removeAuthor(${i})">×</span>`;
+    wrap.insertBefore(tag, input);
+  });
+}
+
+// ── Corresponding author select ──
+function renderCorrespondingSelect(savedValue) {
+  const sel = document.getElementById('f-corresponding');
+  const prev = savedValue !== undefined ? savedValue : sel.value;
+  sel.innerHTML = '<option value="">— select —</option>' +
+    authorsList.map(n => `<option value="${esc(n)}" ${n === prev ? 'selected' : ''}>${esc(n)}</option>`).join('');
+}
+
+// ── Manuscript file select ──
+async function loadDocxFiles(folder, savedFile) {
+  const sel = document.getElementById('f-file_name');
+  if (!folder) { sel.innerHTML = '<option value="">— enter folder first —</option>'; return; }
+  const r = await fetch(`/api/docxfiles?folder=${encodeURIComponent(folder)}`);
+  const d = await r.json();
+  sel.innerHTML = '<option value="">— select —</option>' +
+    d.files.map(f => `<option value="${esc(f)}" ${f === savedFile ? 'selected' : ''}>${esc(f)}</option>`).join('');
+}
+
+// ── Config load/save ──
+async function loadConfig() {
+  const r = await fetch('/api/config/fields');
+  const d = await r.json();
+  const f = d.fields || {};
+
+  document.getElementById('f-article_link').value  = f.article_link  || '';
+  document.getElementById('f-journal_name').value  = f.journal_name  || '';
+  document.getElementById('f-cover_letter_name').value = f.cover_letter_name || '';
+  document.getElementById('f-title_name').value    = f.title_name    || '';
+  document.getElementById('f-highlight_name').value= f.highlight_name|| '';
+
+  authorsList = Array.isArray(f.authors) ? [...f.authors] : [];
+  renderAuthorTags();
+  renderCorrespondingSelect(f.corresponding || '');
+  await loadDocxFiles(f.article_link || '', f.file_name || '');
+
+  // Watch article_link for changes
+  document.getElementById('f-article_link').onchange = function() {
+    loadDocxFiles(this.value.trim(), '');
+  };
+}
+
+async function saveConfig() {
+  const fields = {};
+  const get = id => (document.getElementById(id) || {}).value || '';
+  const folder = get('f-article_link').trim();
+  if (folder) fields.article_link = folder;
+  const fname = get('f-file_name').trim();
+  if (fname) fields.file_name = fname;
+  const journal = get('f-journal_name').trim();
+  if (journal) fields.journal_name = journal;
+  const corr = get('f-corresponding').trim();
+  if (corr) fields.corresponding = corr;
+  if (get('f-cover_letter_name').trim()) fields.cover_letter_name = get('f-cover_letter_name').trim();
+  if (get('f-title_name').trim())        fields.title_name        = get('f-title_name').trim();
+  if (get('f-highlight_name').trim())    fields.highlight_name    = get('f-highlight_name').trim();
+  if (authorsList.length) fields.authors = [...authorsList];
+
+  await fetch('/api/config/fields', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({fields})
+  });
+  log('Config saved.');
+  loadFiles();
+}
+
+async function loadFiles() {
+  const r = await fetch('/api/files');
+  const d = await r.json();
+  const el = document.getElementById('files-list-inner');
+  if (d.files.length === 0) { el.innerHTML = '<span style="color:#aaa;font-size:12px">No output files yet.</span>'; return; }
+  document.getElementById('files-folder-label').textContent = `Output files — ${d.folder}`;
+  el.innerHTML = d.files.map(f => `<span class="file-tag">📄 ${f}</span>`).join('');
+}
+
+// ── Markdown load/save ──
+async function loadMd(doc) {
+  const r = await fetch(`/api/md/${doc}`);
+  const d = await r.json();
+  document.getElementById('md-editor').value = d.content;
+  renderPreview(doc, d.content);
+  updateEditorInfo(doc, d.content);
+  if (!d.exists) log(`No markdown yet for ${doc}. Click Generate.`);
+}
+
+async function saveMd() {
+  const content = document.getElementById('md-editor').value;
+  await fetch(`/api/md/${currentTab}`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({content})
+  });
+  renderPreview(currentTab, content);
+  log('Markdown saved.');
+}
+
+// ── Generate / Build ──
+async function generateDoc() {
+  setLoading('gen', true);
+  log(`Generating ${currentTab}…`);
+  const r = await fetch(`/api/generate/${currentTab}`, {method:'POST'});
+  const d = await r.json();
+  setLoading('gen', false);
+  log(d.output);
+  if (d.ok) {
+    await loadMd(currentTab);
+    markDone(currentTab, 'ready');
+  }
+}
+
+async function buildDoc() {
+  await saveMd();
+  setLoading('build', true);
+  log(`Building ${currentTab} DOCX…`);
+  const r = await fetch(`/api/build/${currentTab}`, {method:'POST'});
+  const d = await r.json();
+  setLoading('build', false);
+  log(d.output);
+  if (d.ok) { markDone(currentTab, 'done'); loadFiles(); }
+}
+
+async function copyDeclaration() {
+  log('Copying DeclarationStatement…');
+  const r = await fetch('/api/copy/declaration', {method:'POST'});
+  const d = await r.json();
+  log(d.output);
+  if (d.ok) { markDone('declaration', 'done'); loadFiles(); }
+}
+
+// ── Preview rendering ──
+function onEditorInput() {
+  const content = document.getElementById('md-editor').value;
+  renderPreview(currentTab, content);
+  updateEditorInfo(currentTab, content);
+}
+
+function updateEditorInfo(doc, content) {
+  const el = document.getElementById('editor-info');
+  if (doc === 'highlights') {
+    const lines = content.split('\n').filter(l => l.trim());
+    const over  = lines.filter(l => l.length > 85).length;
+    el.textContent = `${lines.length} lines${over ? ` · ${over} over 85 chars` : ''}`;
+    el.style.color = over ? '#e53935' : '#aaa';
+  } else {
+    el.textContent = '';
+  }
+}
+
+function renderPreview(doc, content) {
+  const paper = document.getElementById('doc-paper');
+  if (!content.trim()) { paper.innerHTML = '<p style="color:#bbb;font-style:italic">Nothing to preview yet.</p>'; return; }
+  if (doc === 'title')        paper.innerHTML = renderTitle(content);
+  else if (doc === 'cover_letter') paper.innerHTML = renderCoverLetter(content);
+  else if (doc === 'highlights')   paper.innerHTML = renderHighlights(content);
+}
+
+// ── Title preview ──
+function renderTitle(md) {
+  const sections = parseSections(md);
+  let html = '';
+
+  if (sections.Title) {
+    html += `<p class="doc-title">${esc(sections.Title)}</p>`;
+  }
+
+  if (sections.Authors) {
+    html += `<p class="doc-section-label">Authors</p>`;
+    html += `<p>${renderAuthors(sections.Authors)}</p>`;
+  }
+
+  if (sections.Affiliations) {
+    html += `<p class="doc-section-label">Affiliations</p>`;
+    sections.Affiliations.split('\n').forEach(line => {
+      if (!line.trim()) return;
+      const m = line.match(/^\[(\d+)\]\s*(.*)/);
+      if (m) html += `<p><sup>${esc(m[1])}</sup> ${esc(m[2])}</p>`;
+      else   html += `<p>${esc(line)}</p>`;
+    });
+  }
+
+  if (sections.Corresponding) {
+    const parts = sections.Corresponding.split('|').map(s => s.trim());
+    const name  = parts[0] || '';
+    const email = parts[1] || '';
+    const addr  = parts[2] || '';
+    html += `<hr class="doc-separator">`;
+    html += `<p>* Correspondent to: ${esc(name)}${email ? ', <a href="mailto:'+esc(email)+'">'+esc(email)+'</a>' : ''}${addr ? ', '+esc(addr) : ''}</p>`;
+  }
+
+  return html;
+}
+
+function renderAuthors(line) {
+  // "Li Chao[1], Mi Jie[1], Managi Shunsuke*[1]"
+  return line.split(',').map(token => {
+    token = token.trim();
+    return token
+      .replace(/\[(\d+)\]/g, '<sup>$1</sup>')
+      .replace(/\*/g, '<sup style="color:#e53935">*</sup>');
+  }).join(', ');
+}
+
+// ── Cover Letter preview ──
+function renderCoverLetter(md) {
+  const lines = md.split('\n');
+  let html = '';
+  let nonEmpty = 0;
+
+  lines.forEach(line => {
+    if (!line.trim()) {
+      html += '<p>&nbsp;</p>';
+      return;
+    }
+    nonEmpty++;
+    if (nonEmpty <= 2) {
+      html += `<p class="doc-bold">${esc(line)}</p>`;
+    } else {
+      html += `<p>${esc(line)}</p>`;
+    }
+  });
+  return html;
+}
+
+// ── Highlights preview ──
+function renderHighlights(md) {
+  const lines = md.split('\n').filter(l => l.trim());
+  let html = '<p class="doc-bold">Highlights:</p>';
+  lines.forEach(line => {
+    const n    = line.length;
+    const over = n > 85;
+    html += `<div class="hl-item">
+      <span>${esc(line)}</span>
+      <span class="hl-chars ${over ? 'hl-over' : ''}">${n}/85</span>
+    </div>`;
+  });
+  return html;
+}
+
+// ── Section parser for Title.md ──
+function parseSections(md) {
+  const result = {};
+  const regex = /^# (\w[\w\s]*)\n([\s\S]*?)(?=^# |\Z)/gm;
+  let m;
+  while ((m = regex.exec(md + '\n# END\n')) !== null) {
+    const key  = m[1].trim();
+    const body = m[2].trim();
+    if (key !== 'END') result[key] = body;
+  }
+  return result;
+}
+
+// ── Utilities ──
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function log(msg) {
+  const el = document.getElementById('log-bar');
+  const lines = msg.trim().split('\n');
+  lines.forEach(l => {
+    const span = document.createElement('span');
+    span.className = l.includes('Error') || l.includes('error') ? 'err' : '';
+    span.textContent = l + '\n';
+    el.appendChild(span);
+  });
+  el.scrollTop = el.scrollHeight;
+}
+
+function setLoading(which, on) {
+  const spinId = which === 'gen' ? 'gen-spin' : 'build-spin';
+  const btnId  = which === 'gen' ? 'btn-generate' : 'btn-build';
+  document.getElementById(spinId).classList.toggle('hidden', !on);
+  document.getElementById(btnId).disabled = on;
+}
+
+function markDone(tab, state) {
+  const el = document.getElementById(`st-${tab}`);
+  if (el) { el.className = `nav-status ${state}`; }
+}
+
+// ── Init ──
+loadConfig();
+loadFiles();
+loadNamelist();
+</script>
+</body>
+</html>
