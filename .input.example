@@ -1,0 +1,5 @@
+article_link='/path/to/manuscript/folder'
+file_name='manuscript.docx'
+journal_name='Nature Human Behaviour'
+authors={'First Last', 'First Last'}
+corresponding='First Last'
