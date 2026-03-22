@@ -226,9 +226,14 @@ def postprocess_docx(docx_path: Path):
 
 # ---------------------------------------------------------------------------
 # Main
+# Usage:
+#   python cover_letter_creator.py           → generate md (Gemini) then convert
+#   python cover_letter_creator.py --build   → convert existing md only (skip Gemini)
 # ---------------------------------------------------------------------------
 def main():
     _load_env()
+
+    build_only = "--build" in sys.argv
 
     if not INPUT_FILE.exists():
         sys.exit(f"[Error] .input file not found: {INPUT_FILE}")
@@ -250,30 +255,34 @@ def main():
     TEMP_DIR.mkdir(exist_ok=True)
     temp_md = TEMP_DIR / "CoverLetter.md"
 
-    # Date string
-    d = date.today()
-    suffix = "th" if 11 <= d.day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(d.day % 10, "th")
-    today_str = d.strftime(f"%B {d.day}{suffix}, %Y")
+    if build_only:
+        # --build: skip Gemini, use the existing markdown as-is
+        if not temp_md.exists():
+            sys.exit(f"[Error] No markdown found at {temp_md}. Run without --build first.")
+        print(f"[→] Using existing markdown: {temp_md}")
+    else:
+        # Full run: call Gemini and write fresh markdown
+        manuscript_text = extract_docx_text(manuscript_path)
+        manuscript_title = extract_docx_title(manuscript_path, file_name)
+        print(f"[→] Title: {manuscript_title[:80]}...")
+        print(f"[→] Journal: {journal_name}")
 
-    print(f"[→] Reading manuscript: {manuscript_path}")
-    manuscript_text = extract_docx_text(manuscript_path)
-    manuscript_title = extract_docx_title(manuscript_path, file_name)
-    print(f"[→] Title: {manuscript_title[:80]}...")
-    print(f"[→] Journal: {journal_name}")
+        signature_lines = []
+        if TEMPLATE_DOCX.exists():
+            signature_lines = read_template_signature(TEMPLATE_DOCX)
+            print(f"[→] Loaded {len(signature_lines)} signature lines from template")
 
-    signature_lines = []
-    if TEMPLATE_DOCX.exists():
-        signature_lines = read_template_signature(TEMPLATE_DOCX)
-        print(f"[→] Loaded {len(signature_lines)} signature lines from template")
+        d = date.today()
+        suffix = "th" if 11 <= d.day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(d.day % 10, "th")
+        today_str = d.strftime(f"%B {d.day}{suffix}, %Y")
 
-    print("[→] Calling Gemini to generate markdown...")
-    md_content = generate_markdown(
-        manuscript_text, manuscript_title, journal_name, today_str, signature_lines
-    )
-
-    md_content = strip_markdown_emphasis(md_content)
-    temp_md.write_text(md_content, encoding="utf-8")
-    print(f"[→] Markdown saved: {temp_md}")
+        print("[→] Calling Gemini to generate markdown...")
+        md_content = generate_markdown(
+            manuscript_text, manuscript_title, journal_name, today_str, signature_lines
+        )
+        md_content = strip_markdown_emphasis(md_content)
+        temp_md.write_text(md_content, encoding="utf-8")
+        print(f"[→] Markdown saved: {temp_md}")
 
     print("[→] Converting markdown → docx via pandoc...")
     markdown_to_docx(temp_md, output_path)
