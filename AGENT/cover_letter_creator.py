@@ -157,7 +157,7 @@ RULES:
 - Do NOT use bold (**text**) anywhere.
 - Do NOT use italic (*text* or _text_) anywhere.
 - Keep each paragraph as a single unbroken block of text.
-- For the signature block, put each line on its own line with a single newline (not a blank line) between them.
+- For the signature block, put a blank line between each line (e.g., "Name\n\nTitle\n\nInstitution\n\n...").
 - Output ONLY the content between the --- markers (do not include the --- lines themselves).
 """
 
@@ -251,7 +251,9 @@ def main():
     if not manuscript_path.exists():
         sys.exit(f"[Error] Manuscript not found: {manuscript_path}")
 
-    output_path = Path(article_link) / cover_letter_name
+    journal_folder = Path(article_link) / journal_name
+    journal_folder.mkdir(exist_ok=True)
+    output_path = journal_folder / cover_letter_name
     TEMP_DIR.mkdir(exist_ok=True)
     temp_md = TEMP_DIR / "CoverLetter.md"
 
