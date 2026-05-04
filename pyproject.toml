@@ -4,14 +4,14 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "happytogo"
-version = "0.0.2"
+version = "0.1.0"
 description = "Academic manuscript submission document generator"
 requires-python = ">=3.12"
 dependencies = [
     "flask",
     "google-genai",
+    "openai",
     "python-docx",
-    "pypandoc",
     "openpyxl",
     "lxml",
     "tenacity",
