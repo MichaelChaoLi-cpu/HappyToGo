@@ -5,3 +5,5 @@ __pycache__/
 **/__pycache__/
 InfoCenter/NameList.json
 InfoCenter/NameList.xlsx
+
+prompt.md
