@@ -30,6 +30,50 @@
   .nav-status.done  { background: #4caf50; }
   .nav-status.ready { background: #ffa726; }
 
+  /* ── Settings gear button (bottom of sidebar) ── */
+  #settings-gear {
+    margin-top: auto; border-top: 1px solid #2d2d4e;
+    padding: 12px 18px; cursor: pointer; font-size: 18px;
+    color: #555; transition: color .15s;
+  }
+  #settings-gear:hover { color: #c8d0e7; }
+
+  /* ── Settings modal ── */
+  #settings-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 1000; align-items: center; justify-content: center;
+  }
+  #settings-overlay.open { display: flex; }
+  #settings-modal {
+    background: #fff; border-radius: 10px; padding: 28px 32px; width: 380px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.2); position: relative;
+  }
+  #settings-modal h3 { font-size: 15px; font-weight: 700; margin-bottom: 20px; color: #1a1a2e; }
+  #settings-modal .st-close {
+    position: absolute; top: 14px; right: 18px; font-size: 18px;
+    cursor: pointer; color: #aaa; line-height: 1;
+  }
+  #settings-modal .st-close:hover { color: #333; }
+  #settings-modal .st-section-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+    color: #888; margin-bottom: 8px;
+  }
+  #settings-modal .st-row { display: flex; align-items: center; gap: 8px; }
+  #settings-modal input[type="password"] {
+    flex: 1; border: 1px solid #d0d4e4; border-radius: 6px;
+    font-size: 13px; padding: 7px 10px; outline: none; color: #333;
+  }
+  #settings-modal input[type="password"]:focus { border-color: #7c83fd; }
+  #settings-modal .st-btn {
+    font-size: 12px; padding: 7px 14px; border: none; border-radius: 6px;
+    cursor: pointer; font-weight: 600; white-space: nowrap;
+  }
+  #settings-modal .st-save { background: #7c83fd; color: #fff; }
+  #settings-modal .st-save:hover { background: #6369f0; }
+  #settings-modal .st-del  { background: #fff0f0; color: #e53; border: 1px solid #fcc; }
+  #settings-modal .st-del:hover  { background: #ffe0e0; }
+  #settings-modal .st-badge { font-size: 13px; color: #4caf50; font-weight: 600; flex: 1; }
+
   /* ── Main ── */
   #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
@@ -244,7 +288,27 @@
     <span class="icon">🚀</span> Submit
     <span class="nav-status" id="st-submit"></span>
   </div>
+
+  <!-- Settings gear -->
+  <div id="settings-gear" onclick="openSettings()">⚙️ <span style="font-size:11px;letter-spacing:.08em;font-weight:600;">SETTINGS</span></div>
 </nav>
+
+<!-- Settings modal -->
+<div id="settings-overlay" onclick="closeSettingsOnOverlay(event)">
+  <div id="settings-modal">
+    <span class="st-close" onclick="closeSettings()">×</span>
+    <h3>Settings</h3>
+    <div class="st-section-label">🔑 Gemini API Key</div>
+    <div id="st-configured" class="st-row hidden">
+      <span class="st-badge">✓ Configured</span>
+      <button class="st-btn st-del" onclick="deleteApiKey()">Remove</button>
+    </div>
+    <div id="st-input" class="st-row hidden">
+      <input type="password" id="st-key-input" placeholder="Paste API key…" autocomplete="off">
+      <button class="st-btn st-save" onclick="saveApiKey()">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- ── Main ── -->
 <div id="main">
@@ -552,6 +616,35 @@ function show(id, visible) {
 }
 
 // ── State ──
+// ── Settings modal ──
+function openSettings()  { document.getElementById('settings-overlay').classList.add('open'); }
+function closeSettings() { document.getElementById('settings-overlay').classList.remove('open'); }
+function closeSettingsOnOverlay(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
+
+async function loadApiKeyStatus() {
+  const r = await fetch('/api/settings/apikey');
+  const d = await r.json();
+  document.getElementById('st-configured').classList.toggle('hidden', !d.configured);
+  document.getElementById('st-input').classList.toggle('hidden', d.configured);
+}
+
+async function saveApiKey() {
+  const key = document.getElementById('st-key-input').value.trim();
+  if (!key) return;
+  const r = await fetch('/api/settings/apikey', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({key})
+  });
+  const d = await r.json();
+  if (d.ok) { document.getElementById('st-key-input').value = ''; loadApiKeyStatus(); }
+}
+
+async function deleteApiKey() {
+  if (!confirm('Remove the Gemini API key?')) return;
+  await fetch('/api/settings/apikey', {method: 'DELETE'});
+  loadApiKeyStatus();
+}
+
 let nameList    = [];   // [{name, institution, email}]
 let authorsList = [];   // ordered author names for current paper
 let acIndex     = -1;
@@ -1291,6 +1384,7 @@ function markDone(tab, state) {
 loadConfig();
 loadFiles();
 loadNamelist();
+loadApiKeyStatus();
 </script>
 </body>
 </html>

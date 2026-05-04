@@ -506,6 +506,59 @@ def log_submission():
 
 
 # ---------------------------------------------------------------------------
+# Routes — API Key settings
+# ---------------------------------------------------------------------------
+
+ENV_FILE = PROJECT_ROOT / ".env"
+_API_KEY_VAR = "GEMINI_API_KEY"
+
+
+def _read_env() -> dict[str, str]:
+    result = {}
+    if not ENV_FILE.exists():
+        return result
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[7:]
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            result[k.strip()] = v.strip().strip("'\"")
+    return result
+
+
+def _write_env(data: dict[str, str]):
+    lines = [f"{k}='{v}'" for k, v in data.items()]
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+@app.route("/api/settings/apikey", methods=["GET"])
+def get_apikey_status():
+    env = _read_env()
+    configured = bool(env.get(_API_KEY_VAR, "").strip())
+    return jsonify({"configured": configured})
+
+
+@app.route("/api/settings/apikey", methods=["POST"])
+def save_apikey():
+    key = (request.json or {}).get("key", "").strip()
+    if not key:
+        return jsonify({"ok": False, "error": "Key cannot be empty"})
+    env = _read_env()
+    env[_API_KEY_VAR] = key
+    _write_env(env)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings/apikey", methods=["DELETE"])
+def delete_apikey():
+    env = _read_env()
+    env.pop(_API_KEY_VAR, None)
+    _write_env(env)
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     print(f"[HappyToGo STAGE] running at http://127.0.0.1:5050")
