@@ -257,12 +257,14 @@
       <button class="btn btn-primary" onclick="saveConfig()">💾 Save</button>
     </div>
     <!-- Doc actions -->
-    <div id="actions-doc" class="hidden">
-      <button class="btn btn-primary" id="btn-generate" onclick="generateDoc()">
+    <div id="actions-doc" class="hidden" style="display:flex;align-items:center;gap:6px;">
+      <button class="btn btn-primary" id="btn-generate" onclick="generateDoc()" style="padding:8px 20px;font-size:13px;">
         <span id="gen-spin" class="spin hidden"></span>⚡ Generate
       </button>
-      <button class="btn btn-secondary" id="btn-save-md" onclick="saveMd()">💾 Save MD</button>
-      <button class="btn btn-success" id="btn-build" onclick="buildDoc()">
+      <span style="width:1px;height:24px;background:#d0d4e4;display:inline-block;margin:0 4px;"></span>
+      <button class="btn btn-secondary" id="btn-save-md" onclick="saveMd()" style="padding:8px 18px;font-size:13px;border:1px solid #c0c4d4;">💾 Save MD</button>
+      <span style="width:1px;height:24px;background:#d0d4e4;display:inline-block;margin:0 4px;"></span>
+      <button class="btn btn-success" id="btn-build" onclick="buildDoc()" style="padding:8px 20px;font-size:13px;">
         <span id="build-spin" class="spin hidden"></span>📄 Build DOCX
       </button>
     </div>
