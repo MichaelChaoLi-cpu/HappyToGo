@@ -269,9 +269,10 @@
       </button>
     </div>
     <!-- Credit actions -->
-    <div id="actions-credit" class="hidden">
-      <button class="btn btn-primary" onclick="saveCredit()">💾 Save</button>
-      <button class="btn btn-success" onclick="buildCredit()">
+    <div id="actions-credit" class="hidden" style="display:flex;align-items:center;gap:6px;">
+      <button class="btn btn-primary" onclick="saveCredit()" style="padding:8px 20px;font-size:13px;">💾 Save</button>
+      <span style="width:1px;height:24px;background:#d0d4e4;display:inline-block;margin:0 4px;"></span>
+      <button class="btn btn-success" onclick="buildCredit()" style="padding:8px 20px;font-size:13px;">
         <span id="credit-spin" class="spin hidden"></span>📄 Build DOCX
       </button>
     </div>
