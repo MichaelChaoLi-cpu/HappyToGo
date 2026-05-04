@@ -306,10 +306,10 @@ def list_files():
 # ---------------------------------------------------------------------------
 
 CREDIT_ROLES = [
-    "Conceptualization", "Methodology", "Software", "Validation",
-    "Formal analysis", "Investigation", "Data Curation", "Data Processing",
-    "Original Draft", "Review & Editing", "Visualization",
-    "Resources", "Supervision", "Project administration", "Funding acquisition",
+    "Conceptualization", "Data Curation", "Data Processing", "Formal analysis",
+    "Funding acquisition", "Investigation", "Methodology", "Original Draft",
+    "Project administration", "Resources", "Review & Editing", "Software",
+    "Supervision", "Validation", "Visualization",
 ]
 
 CREDIT_JSON = TEMP_DIR / "CreditAuthorStatement.json"
