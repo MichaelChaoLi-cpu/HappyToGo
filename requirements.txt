@@ -21,6 +21,7 @@ itsdangerous==2.2.0
 Jinja2==3.1.6
 lxml==6.0.2
 MarkupSafe==3.0.3
+openai==2.33.0
 openpyxl==3.1.5
 proto-plus==1.27.1
 protobuf==6.33.6
@@ -29,7 +30,6 @@ pyasn1_modules==0.4.2
 pycparser==3.0
 pydantic==2.12.5
 pydantic_core==2.41.5
-pypandoc @ file:///home/conda/feedstock_root/build_artifacts/pypandoc_1773574325992/work
 python-docx==1.2.0
 requests==2.32.5
 setuptools==78.1.1
