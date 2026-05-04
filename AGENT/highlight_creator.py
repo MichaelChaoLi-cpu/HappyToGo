@@ -21,12 +21,21 @@ import re
 import sys
 from pathlib import Path
 
-SCRIPT_DIR    = Path(__file__).parent
-PROJECT_ROOT  = SCRIPT_DIR.parent
-INPUT_FILE    = PROJECT_ROOT / ".input"
-TEMPLATE_DOCX = PROJECT_ROOT / "CLASSICS" / "Highlight.docx"
-TEMP_DIR      = PROJECT_ROOT / "_temp"
-TEMP_MD       = TEMP_DIR / "Highlights.md"
+SCRIPT_DIR   = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+INPUT_FILE   = PROJECT_ROOT / ".input"
+TEMP_DIR     = PROJECT_ROOT / "_temp"
+TEMP_MD      = TEMP_DIR / "Highlights.md"
+
+# Page / font constants (US Letter, 1.25" L/R, 1.0" T/B, Times New Roman 12pt)
+_EMU_INCH  = 914400
+_EMU_PT    = 12700
+PAGE_WIDTH  = int(8.5  * _EMU_INCH)
+PAGE_HEIGHT = int(11.0 * _EMU_INCH)
+MARGIN_LR   = int(1.25 * _EMU_INCH)
+MARGIN_TB   = int(1.0  * _EMU_INCH)
+SIZE_BODY   = 12 * _EMU_PT
+FONT_SERIF  = "Times New Roman"
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from llm import call_llm
@@ -38,8 +47,6 @@ from llm import call_llm
 def _load_env():
     import os
     env_file = PROJECT_ROOT / ".env"
-    if os.environ.get("GEMINI_API_KEY"):
-        return
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             line = line.strip()
@@ -85,6 +92,7 @@ STRICT REQUIREMENTS:
 - Each highlight MUST be a complete sentence (subject + verb + object/complement).
 - Each highlight MUST be 85 characters or fewer INCLUDING spaces. Count carefully before outputting.
 - Plain text only — no bullet points, no dashes, no numbers, no markdown, no bold.
+- Do NOT use parentheses ( ) for any explanations or clarifications.
 - Capture the most important findings and contributions: data/methods, key results, implications.
 - Output ONLY the 5 highlights, one per line, nothing else.
 
@@ -125,37 +133,41 @@ def read_temp_md() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Write Highlights.docx — mirrors CLASSICS/Highlight.docx structure
+# Write Highlights.docx — built from scratch
 # ---------------------------------------------------------------------------
 def write_highlights_docx(output_path: Path, highlights: list[str]):
-    import shutil
     from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    shutil.copy2(str(TEMPLATE_DOCX), str(output_path))
-    doc = Document(str(output_path))
-    paras = doc.paragraphs
+    doc = Document()
 
-    def set_para(para, text, bold=False):
-        for run in para.runs:
-            run.text = ""
-        if para.runs:
-            para.runs[0].text = text
-            para.runs[0].bold = bold
-        else:
-            para.add_run(text).bold = bold
+    sec = doc.sections[0]
+    sec.page_width    = PAGE_WIDTH
+    sec.page_height   = PAGE_HEIGHT
+    sec.left_margin   = MARGIN_LR
+    sec.right_margin  = MARGIN_LR
+    sec.top_margin    = MARGIN_TB
+    sec.bottom_margin = MARGIN_TB
 
-    # Paragraph 0: "Highlights:" (bold)
-    if paras:
-        set_para(paras[0], "Highlights:", bold=True)
+    # Remove default empty paragraph
+    for p in doc.paragraphs:
+        p._element.getparent().remove(p._element)
 
-    # Paragraphs 1–5: highlight sentences
-    for i, highlight in enumerate(highlights):
-        idx = i + 1
-        if idx < len(paras):
-            set_para(paras[idx], highlight, bold=False)
-        else:
-            p = doc.add_paragraph(highlight)
-            p.style = doc.styles["Normal"]
+    def _add(text, align=None, bold=False):
+        p = doc.add_paragraph()
+        if align is not None:
+            p.alignment = align
+        r = p.add_run(text)
+        r.bold      = bold
+        r.font.size = SIZE_BODY
+        r.font.name = FONT_SERIF
+
+    # "Highlights:" label (bold, no explicit alignment → inherits Normal)
+    _add("Highlights:", bold=True)
+
+    # 5 highlight sentences (JUSTIFY)
+    for h in highlights:
+        _add(h, align=WD_ALIGN_PARAGRAPH.JUSTIFY)
 
     doc.save(str(output_path))
     print(f"[✓] Highlights saved: {output_path}")

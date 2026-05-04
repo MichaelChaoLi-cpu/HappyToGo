@@ -15,7 +15,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 AGENT_DIR    = PROJECT_ROOT / "AGENT"
 TEMP_DIR     = PROJECT_ROOT / "_temp"
 INPUT_FILE   = PROJECT_ROOT / ".input"
-CLASSICS_DIR = PROJECT_ROOT / "CLASSICS"
 
 PYTHON = sys.executable   # same interpreter that's running this app
 
@@ -193,18 +192,74 @@ def build(doc):
     return jsonify(result)
 
 
+def _build_declaration_docx(dst: Path):
+    """Build DeclarationStatement.docx from scratch (no template needed)."""
+    from docx import Document
+    from docx.oxml import OxmlElement
+
+    _EMU_INCH = 914400
+    _EMU_PT   = 12700
+
+    doc = Document()
+    sec = doc.sections[0]
+    sec.page_width    = int(8.5  * _EMU_INCH)
+    sec.page_height   = int(11.0 * _EMU_INCH)
+    sec.left_margin   = sec.right_margin  = _EMU_INCH        # 1"
+    sec.top_margin    = sec.bottom_margin = _EMU_INCH        # 1"
+
+    # Normal style: 10pt space after
+    doc.styles["Normal"].paragraph_format.space_after = int(10 * _EMU_PT)
+
+    # Remove default empty paragraph
+    for p in doc.paragraphs:
+        p._element.getparent().remove(p._element)
+
+    para = doc.add_paragraph()
+    para.paragraph_format.space_before = None
+    para.paragraph_format.space_after  = None
+
+    def _r(text, bold=False):
+        el = OxmlElement("w:r")
+        if bold:
+            rPr = OxmlElement("w:rPr")
+            rPr.append(OxmlElement("w:b"))
+            el.append(rPr)
+        t = OxmlElement("w:t")
+        t.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        t.text = text
+        el.append(t)
+        para._element.append(el)
+
+    def _br():
+        el = OxmlElement("w:r")
+        el.append(OxmlElement("w:br"))
+        para._element.append(el)
+
+    _r("Declaration of interests", bold=True)
+    _br()
+    _r(" ")   # NBSP blank line
+    _br()
+    _r("☒ The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.")
+    _br()
+    _r(" ")   # NBSP blank line
+    _br()
+    _r("☐ The authors declare the following financial interests/personal relationships which may be considered as potential competing interests:")
+    _br()
+
+    doc.save(str(dst))
+
+
 @app.route("/api/copy/declaration", methods=["POST"])
 def copy_declaration():
-    import shutil
-    src = CLASSICS_DIR / "DeclarationStatement.docx"
     article_link = get_article_link()
     if not article_link:
         return jsonify({"ok": False, "output": "article_link not set in .input"})
     dst = Path(article_link) / "DeclarationStatement.docx"
-    if not src.exists():
-        return jsonify({"ok": False, "output": "DeclarationStatement.docx not found in CLASSICS"})
-    shutil.copy2(str(src), str(dst))
-    return jsonify({"ok": True, "output": f"Copied to {dst}"})
+    try:
+        _build_declaration_docx(dst)
+        return jsonify({"ok": True, "output": f"DeclarationStatement saved: {dst}"})
+    except Exception as e:
+        return jsonify({"ok": False, "output": str(e)})
 
 
 # ---------------------------------------------------------------------------
@@ -216,12 +271,15 @@ NAMELIST_FILE   = INFOCENTER_DIR / "NameList.json"
 
 
 def _norm_person(p) -> dict:
-    """Normalise a NameList entry to {name, institution, email}."""
+    """Normalise a NameList entry to {name, institution, email, address, position, phone}."""
     if isinstance(p, str):
-        return {"name": p.strip(), "institution": "", "email": ""}
-    return {"name": p.get("name", "").strip(),
+        return {"name": p.strip(), "institution": "", "email": "", "address": "", "position": "", "phone": ""}
+    return {"name":        p.get("name", "").strip(),
             "institution": p.get("institution", "").strip(),
-            "email": p.get("email", "").strip()}
+            "email":       p.get("email", "").strip(),
+            "address":     p.get("address", "").strip(),
+            "position":    p.get("position", "").strip(),
+            "phone":       p.get("phone", "").strip()}
 
 
 def load_namelist() -> list[dict]:
@@ -254,12 +312,21 @@ def get_namelist():
 
 @app.route("/api/namelist", methods=["POST"])
 def update_namelist():
-    """Add new persons (by name or object). Ignores duplicates."""
+    """Upsert persons: update existing entry's fields if name matches, else add new."""
     new_persons = request.json.get("persons", [])
-    existing = {p["name"] for p in load_namelist()}
-    merged = load_namelist() + [_norm_person(p) for p in new_persons
-                                if _norm_person(p)["name"] not in existing]
-    save_namelist(merged)
+    current = {p["name"]: p for p in load_namelist()}
+    for p in new_persons:
+        p = _norm_person(p)
+        name = p["name"]
+        if not name:
+            continue
+        if name in current:
+            for field in ("institution", "email", "address", "position", "phone"):
+                if p[field]:
+                    current[name][field] = p[field]
+        else:
+            current[name] = p
+    save_namelist(list(current.values()))
     return jsonify({"ok": True, "persons": load_namelist()})
 
 
@@ -306,10 +373,10 @@ def list_files():
 # ---------------------------------------------------------------------------
 
 CREDIT_ROLES = [
-    "Conceptualization", "Methodology", "Software", "Validation",
-    "Formal analysis", "Investigation", "Data Curation", "Data Processing",
-    "Original Draft", "Review & Editing", "Visualization",
-    "Resources", "Supervision", "Project administration", "Funding acquisition",
+    "Conceptualization", "Data Curation", "Data Processing", "Formal analysis",
+    "Funding acquisition", "Investigation", "Methodology", "Original Draft",
+    "Project administration", "Resources", "Review & Editing", "Software",
+    "Supervision", "Validation", "Visualization",
 ]
 
 CREDIT_JSON = TEMP_DIR / "CreditAuthorStatement.json"
@@ -436,6 +503,82 @@ def log_submission():
         existing += "\n"
     log_path.write_text(existing + line + "\n", encoding="utf-8")
     return jsonify({"ok": True, "line": line})
+
+
+# ---------------------------------------------------------------------------
+# Routes — API Key settings
+# ---------------------------------------------------------------------------
+
+ENV_FILE = PROJECT_ROOT / ".env"
+_PROVIDER_KEY_MAP = {"gemini": "GEMINI_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}
+
+
+def _read_env() -> dict[str, str]:
+    result = {}
+    if not ENV_FILE.exists():
+        return result
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[7:]
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            result[k.strip()] = v.strip().strip("'\"")
+    return result
+
+
+def _write_env(data: dict[str, str]):
+    lines = [f"{k}='{v}'" for k, v in data.items()]
+    ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
+    env = _read_env()
+    provider = env.get("LLM_PROVIDER", "gemini")
+    return jsonify({
+        "provider": provider,
+        "gemini_configured":   bool(env.get("GEMINI_API_KEY", "").strip()),
+        "deepseek_configured": bool(env.get("DEEPSEEK_API_KEY", "").strip()),
+    })
+
+
+@app.route("/api/settings/provider", methods=["POST"])
+def set_provider():
+    provider = (request.json or {}).get("provider", "").strip().lower()
+    if provider not in _PROVIDER_KEY_MAP:
+        return jsonify({"ok": False, "error": "Unknown provider"})
+    env = _read_env()
+    env["LLM_PROVIDER"] = provider
+    _write_env(env)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings/apikey", methods=["POST"])
+def save_apikey():
+    data     = request.json or {}
+    provider = data.get("provider", "gemini").strip().lower()
+    key      = data.get("key", "").strip()
+    if not key:
+        return jsonify({"ok": False, "error": "Key cannot be empty"})
+    var = _PROVIDER_KEY_MAP.get(provider)
+    if not var:
+        return jsonify({"ok": False, "error": "Unknown provider"})
+    env = _read_env()
+    env[var] = key
+    _write_env(env)
+    return jsonify({"ok": True})
+
+
+@app.route("/api/settings/apikey", methods=["DELETE"])
+def delete_apikey():
+    provider = (request.json or {}).get("provider", "gemini").strip().lower()
+    var = _PROVIDER_KEY_MAP.get(provider)
+    if var:
+        env = _read_env()
+        env.pop(var, None)
+        _write_env(env)
+    return jsonify({"ok": True})
 
 
 # ---------------------------------------------------------------------------
