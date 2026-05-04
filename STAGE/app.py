@@ -510,7 +510,7 @@ def log_submission():
 # ---------------------------------------------------------------------------
 
 ENV_FILE = PROJECT_ROOT / ".env"
-_API_KEY_VAR = "GEMINI_API_KEY"
+_PROVIDER_KEY_MAP = {"gemini": "GEMINI_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}
 
 
 def _read_env() -> dict[str, str]:
@@ -532,29 +532,52 @@ def _write_env(data: dict[str, str]):
     ENV_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-@app.route("/api/settings/apikey", methods=["GET"])
-def get_apikey_status():
+@app.route("/api/settings", methods=["GET"])
+def get_settings():
     env = _read_env()
-    configured = bool(env.get(_API_KEY_VAR, "").strip())
-    return jsonify({"configured": configured})
+    provider = env.get("LLM_PROVIDER", "gemini")
+    return jsonify({
+        "provider": provider,
+        "gemini_configured":   bool(env.get("GEMINI_API_KEY", "").strip()),
+        "deepseek_configured": bool(env.get("DEEPSEEK_API_KEY", "").strip()),
+    })
+
+
+@app.route("/api/settings/provider", methods=["POST"])
+def set_provider():
+    provider = (request.json or {}).get("provider", "").strip().lower()
+    if provider not in _PROVIDER_KEY_MAP:
+        return jsonify({"ok": False, "error": "Unknown provider"})
+    env = _read_env()
+    env["LLM_PROVIDER"] = provider
+    _write_env(env)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/settings/apikey", methods=["POST"])
 def save_apikey():
-    key = (request.json or {}).get("key", "").strip()
+    data     = request.json or {}
+    provider = data.get("provider", "gemini").strip().lower()
+    key      = data.get("key", "").strip()
     if not key:
         return jsonify({"ok": False, "error": "Key cannot be empty"})
+    var = _PROVIDER_KEY_MAP.get(provider)
+    if not var:
+        return jsonify({"ok": False, "error": "Unknown provider"})
     env = _read_env()
-    env[_API_KEY_VAR] = key
+    env[var] = key
     _write_env(env)
     return jsonify({"ok": True})
 
 
 @app.route("/api/settings/apikey", methods=["DELETE"])
 def delete_apikey():
-    env = _read_env()
-    env.pop(_API_KEY_VAR, None)
-    _write_env(env)
+    provider = (request.json or {}).get("provider", "gemini").strip().lower()
+    var = _PROVIDER_KEY_MAP.get(provider)
+    if var:
+        env = _read_env()
+        env.pop(var, None)
+        _write_env(env)
     return jsonify({"ok": True})
 
 

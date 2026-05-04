@@ -59,8 +59,6 @@ LINE_SPACING  = 1.5   # multiple
 # ---------------------------------------------------------------------------
 def _load_env():
     env_file = PROJECT_ROOT / ".env"
-    if os.environ.get("GEMINI_API_KEY"):
-        return
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             line = line.strip()

@@ -73,6 +73,12 @@
   #settings-modal .st-del  { background: #fff0f0; color: #e53; border: 1px solid #fcc; }
   #settings-modal .st-del:hover  { background: #ffe0e0; }
   #settings-modal .st-badge { font-size: 13px; color: #4caf50; font-weight: 600; flex: 1; }
+  #settings-modal .st-radio-label {
+    display: flex; align-items: center; gap: 6px; font-size: 13px;
+    font-weight: 600; color: #444; cursor: pointer; padding: 6px 14px;
+    border: 2px solid #e0e4ef; border-radius: 7px; transition: all .15s;
+  }
+  #settings-modal .st-radio-label:has(input:checked) { border-color: #7c83fd; color: #7c83fd; background: #f4f4ff; }
 
   /* ── Main ── */
   #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -298,7 +304,20 @@
   <div id="settings-modal">
     <span class="st-close" onclick="closeSettings()">×</span>
     <h3>Settings</h3>
-    <div class="st-section-label">🔑 Gemini API Key</div>
+
+    <!-- Provider selector -->
+    <div class="st-section-label" style="margin-bottom:10px;">LLM Provider</div>
+    <div class="st-row" style="gap:12px;margin-bottom:20px;">
+      <label class="st-radio-label" id="st-lbl-gemini">
+        <input type="radio" name="st-provider" value="gemini" onchange="onProviderChange('gemini')"> Gemini
+      </label>
+      <label class="st-radio-label" id="st-lbl-deepseek">
+        <input type="radio" name="st-provider" value="deepseek" onchange="onProviderChange('deepseek')"> DeepSeek
+      </label>
+    </div>
+
+    <!-- Key area (changes per provider) -->
+    <div class="st-section-label" id="st-key-label">🔑 API Key</div>
     <div id="st-configured" class="st-row hidden">
       <span class="st-badge">✓ Configured</span>
       <button class="st-btn st-del" onclick="deleteApiKey()">Remove</button>
@@ -617,32 +636,68 @@ function show(id, visible) {
 
 // ── State ──
 // ── Settings modal ──
-function openSettings()  { document.getElementById('settings-overlay').classList.add('open'); }
+let _stSettings = { provider: 'gemini', gemini_configured: false, deepseek_configured: false };
+
+function openSettings() {
+  document.getElementById('settings-overlay').classList.add('open');
+  loadSettings();
+}
 function closeSettings() { document.getElementById('settings-overlay').classList.remove('open'); }
 function closeSettingsOnOverlay(e) { if (e.target === document.getElementById('settings-overlay')) closeSettings(); }
 
-async function loadApiKeyStatus() {
-  const r = await fetch('/api/settings/apikey');
-  const d = await r.json();
-  document.getElementById('st-configured').classList.toggle('hidden', !d.configured);
-  document.getElementById('st-input').classList.toggle('hidden', d.configured);
+async function loadSettings() {
+  const r = await fetch('/api/settings');
+  _stSettings = await r.json();
+  // Set radio
+  document.querySelectorAll('input[name="st-provider"]').forEach(el => {
+    el.checked = el.value === _stSettings.provider;
+  });
+  _renderKeyArea(_stSettings.provider);
 }
+
+function onProviderChange(provider) {
+  fetch('/api/settings/provider', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({provider})
+  });
+  _stSettings.provider = provider;
+  _renderKeyArea(provider);
+}
+
+function _renderKeyArea(provider) {
+  const configured = provider === 'gemini' ? _stSettings.gemini_configured : _stSettings.deepseek_configured;
+  const label = provider === 'gemini' ? '🔑 Gemini API Key' : '🔑 DeepSeek API Key';
+  document.getElementById('st-key-label').textContent = label;
+  document.getElementById('st-configured').classList.toggle('hidden', !configured);
+  document.getElementById('st-input').classList.toggle('hidden', configured);
+  document.getElementById('st-key-input').value = '';
+}
+
+async function loadApiKeyStatus() { /* called at init — load full settings */ await loadSettings(); }
 
 async function saveApiKey() {
   const key = document.getElementById('st-key-input').value.trim();
   if (!key) return;
   const r = await fetch('/api/settings/apikey', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({key})
+    body: JSON.stringify({provider: _stSettings.provider, key})
   });
   const d = await r.json();
-  if (d.ok) { document.getElementById('st-key-input').value = ''; loadApiKeyStatus(); }
+  if (d.ok) {
+    _stSettings[_stSettings.provider + '_configured'] = true;
+    _renderKeyArea(_stSettings.provider);
+  }
 }
 
 async function deleteApiKey() {
-  if (!confirm('Remove the Gemini API key?')) return;
-  await fetch('/api/settings/apikey', {method: 'DELETE'});
-  loadApiKeyStatus();
+  const prov = _stSettings.provider;
+  if (!confirm(`Remove the ${prov === 'gemini' ? 'Gemini' : 'DeepSeek'} API key?`)) return;
+  await fetch('/api/settings/apikey', {
+    method: 'DELETE', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({provider: prov})
+  });
+  _stSettings[prov + '_configured'] = false;
+  _renderKeyArea(prov);
 }
 
 let nameList    = [];   // [{name, institution, email}]
