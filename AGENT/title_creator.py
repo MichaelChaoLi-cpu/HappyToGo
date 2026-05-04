@@ -70,6 +70,8 @@ def load_namelist() -> dict[str, dict]:
                 "institution": p.get("institution", "").strip(),
                 "email":       p.get("email", "").strip(),
                 "address":     p.get("address", "").strip(),
+                "position":    p.get("position", "").strip(),
+                "phone":       p.get("phone", "").strip(),
             }
             for p in persons if p.get("name", "").strip()
         }

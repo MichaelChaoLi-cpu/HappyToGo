@@ -216,13 +216,15 @@ NAMELIST_FILE   = INFOCENTER_DIR / "NameList.json"
 
 
 def _norm_person(p) -> dict:
-    """Normalise a NameList entry to {name, institution, email, address}."""
+    """Normalise a NameList entry to {name, institution, email, address, position, phone}."""
     if isinstance(p, str):
-        return {"name": p.strip(), "institution": "", "email": "", "address": ""}
-    return {"name": p.get("name", "").strip(),
+        return {"name": p.strip(), "institution": "", "email": "", "address": "", "position": "", "phone": ""}
+    return {"name":        p.get("name", "").strip(),
             "institution": p.get("institution", "").strip(),
-            "email": p.get("email", "").strip(),
-            "address": p.get("address", "").strip()}
+            "email":       p.get("email", "").strip(),
+            "address":     p.get("address", "").strip(),
+            "position":    p.get("position", "").strip(),
+            "phone":       p.get("phone", "").strip()}
 
 
 def load_namelist() -> list[dict]:
@@ -264,7 +266,7 @@ def update_namelist():
         if not name:
             continue
         if name in current:
-            for field in ("institution", "email", "address"):
+            for field in ("institution", "email", "address", "position", "phone"):
                 if p[field]:
                     current[name][field] = p[field]
         else:

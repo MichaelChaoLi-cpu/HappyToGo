@@ -396,8 +396,10 @@
         <div id="nl-list"></div>
         <div id="nl-add-form">
           <input class="nl-add-input" id="nl-inp-name"        placeholder="Name *" onkeydown="if(event.key==='Enter') nlAddPerson()">
+          <input class="nl-add-input" id="nl-inp-position"    placeholder="Position / Title">
           <input class="nl-add-input" id="nl-inp-institution" placeholder="Institution">
           <input class="nl-add-input" id="nl-inp-email"       placeholder="Email">
+          <input class="nl-add-input" id="nl-inp-phone"       placeholder="Phone">
           <input class="nl-add-input" id="nl-inp-address"     placeholder="Address (for corresponding)">
           <button class="btn btn-primary" style="width:100%;padding:5px;font-size:12px;justify-content:center;"
                   onclick="nlAddPerson()">+ Add to NameList</button>
@@ -578,18 +580,18 @@ function renderNlPanel() {
   const el = document.getElementById('nl-list');
   if (!el) return;
   el.innerHTML = nameList.map((p, i) => {
+    const posHtml  = p.position    ? `<span>🎓 ${esc(p.position)}</span>` : '';
     const instHtml = p.institution
       ? `<span>🏛 ${esc(p.institution)} <span class="nl-copy" onclick="copyText('${esc(p.institution)}')">copy</span></span>`
       : `<span style="color:#ddd">🏛 —</span>`;
     const emailHtml = p.email
       ? `<span>✉ ${esc(p.email)} <span class="nl-copy" onclick="copyText('${esc(p.email)}')">copy</span></span>`
       : `<span style="color:#ddd">✉ —</span>`;
-    const addrHtml = p.address
-      ? `<span>📍 ${esc(p.address)} <span class="nl-copy" onclick="copyText('${esc(p.address)}')">copy</span></span>`
-      : '';
+    const phoneHtml = p.phone   ? `<span>📞 ${esc(p.phone)}</span>` : '';
+    const addrHtml  = p.address ? `<span>📍 ${esc(p.address)}</span>` : '';
     return `<div class="nl-card">
       <div class="nl-name">${esc(p.name)}</div>
-      <div class="nl-meta">${instHtml}${emailHtml}${addrHtml}</div>
+      <div class="nl-meta">${posHtml}${instHtml}${emailHtml}${phoneHtml}${addrHtml}</div>
       <span class="nl-del" onclick="nlRemove(${i})">×</span>
     </div>`;
   }).join('');
@@ -602,14 +604,15 @@ function nlAddPerson() {
   if (!name) return;
   const incoming = {
     name,
+    position:    document.getElementById('nl-inp-position').value.trim(),
     institution: document.getElementById('nl-inp-institution').value.trim(),
     email:       document.getElementById('nl-inp-email').value.trim(),
+    phone:       document.getElementById('nl-inp-phone').value.trim(),
     address:     document.getElementById('nl-inp-address').value.trim(),
   };
   const idx = nameList.findIndex(p => p.name === name);
   if (idx >= 0) {
-    // Upsert: merge non-empty fields into existing entry
-    ['institution','email','address'].forEach(f => {
+    ['position','institution','email','phone','address'].forEach(f => {
       if (incoming[f]) nameList[idx][f] = incoming[f];
     });
     log(`"${name}" updated in NameList.`);
@@ -622,7 +625,7 @@ function nlAddPerson() {
     method: 'POST', headers: {'Content-Type':'application/json'},
     body: JSON.stringify({persons: [incoming]})
   });
-  ['nl-inp-name','nl-inp-institution','nl-inp-email','nl-inp-address'].forEach(id =>
+  ['nl-inp-name','nl-inp-position','nl-inp-institution','nl-inp-email','nl-inp-phone','nl-inp-address'].forEach(id =>
     document.getElementById(id).value = '');
 }
 
