@@ -398,6 +398,7 @@
           <input class="nl-add-input" id="nl-inp-name"        placeholder="Name *" onkeydown="if(event.key==='Enter') nlAddPerson()">
           <input class="nl-add-input" id="nl-inp-institution" placeholder="Institution">
           <input class="nl-add-input" id="nl-inp-email"       placeholder="Email">
+          <input class="nl-add-input" id="nl-inp-address"     placeholder="Address (for corresponding)">
           <button class="btn btn-primary" style="width:100%;padding:5px;font-size:12px;justify-content:center;"
                   onclick="nlAddPerson()">+ Add to NameList</button>
         </div>
@@ -583,9 +584,12 @@ function renderNlPanel() {
     const emailHtml = p.email
       ? `<span>✉ ${esc(p.email)} <span class="nl-copy" onclick="copyText('${esc(p.email)}')">copy</span></span>`
       : `<span style="color:#ddd">✉ —</span>`;
+    const addrHtml = p.address
+      ? `<span>📍 ${esc(p.address)} <span class="nl-copy" onclick="copyText('${esc(p.address)}')">copy</span></span>`
+      : '';
     return `<div class="nl-card">
       <div class="nl-name">${esc(p.name)}</div>
-      <div class="nl-meta">${instHtml}${emailHtml}</div>
+      <div class="nl-meta">${instHtml}${emailHtml}${addrHtml}</div>
       <span class="nl-del" onclick="nlRemove(${i})">×</span>
     </div>`;
   }).join('');
@@ -596,21 +600,30 @@ function nlRemove(i) { nameList.splice(i, 1); renderNlPanel(); }
 function nlAddPerson() {
   const name = document.getElementById('nl-inp-name').value.trim();
   if (!name) return;
-  if (nameList.some(p => p.name === name)) { log(`"${name}" already in NameList.`); return; }
-  const person = {
+  const incoming = {
     name,
     institution: document.getElementById('nl-inp-institution').value.trim(),
     email:       document.getElementById('nl-inp-email').value.trim(),
+    address:     document.getElementById('nl-inp-address').value.trim(),
   };
-  nameList.push(person);
+  const idx = nameList.findIndex(p => p.name === name);
+  if (idx >= 0) {
+    // Upsert: merge non-empty fields into existing entry
+    ['institution','email','address'].forEach(f => {
+      if (incoming[f]) nameList[idx][f] = incoming[f];
+    });
+    log(`"${name}" updated in NameList.`);
+  } else {
+    nameList.push(incoming);
+    log(`"${name}" added to NameList.`);
+  }
   renderNlPanel();
   fetch('/api/namelist', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({persons: [person]})
+    body: JSON.stringify({persons: [incoming]})
   });
-  ['nl-inp-name','nl-inp-institution','nl-inp-email'].forEach(id =>
+  ['nl-inp-name','nl-inp-institution','nl-inp-email','nl-inp-address'].forEach(id =>
     document.getElementById(id).value = '');
-  log(`"${name}" added to NameList.`);
 }
 
 function copyText(text) {

@@ -216,12 +216,13 @@ NAMELIST_FILE   = INFOCENTER_DIR / "NameList.json"
 
 
 def _norm_person(p) -> dict:
-    """Normalise a NameList entry to {name, institution, email}."""
+    """Normalise a NameList entry to {name, institution, email, address}."""
     if isinstance(p, str):
-        return {"name": p.strip(), "institution": "", "email": ""}
+        return {"name": p.strip(), "institution": "", "email": "", "address": ""}
     return {"name": p.get("name", "").strip(),
             "institution": p.get("institution", "").strip(),
-            "email": p.get("email", "").strip()}
+            "email": p.get("email", "").strip(),
+            "address": p.get("address", "").strip()}
 
 
 def load_namelist() -> list[dict]:
@@ -254,12 +255,21 @@ def get_namelist():
 
 @app.route("/api/namelist", methods=["POST"])
 def update_namelist():
-    """Add new persons (by name or object). Ignores duplicates."""
+    """Upsert persons: update existing entry's fields if name matches, else add new."""
     new_persons = request.json.get("persons", [])
-    existing = {p["name"] for p in load_namelist()}
-    merged = load_namelist() + [_norm_person(p) for p in new_persons
-                                if _norm_person(p)["name"] not in existing]
-    save_namelist(merged)
+    current = {p["name"]: p for p in load_namelist()}
+    for p in new_persons:
+        p = _norm_person(p)
+        name = p["name"]
+        if not name:
+            continue
+        if name in current:
+            for field in ("institution", "email", "address"):
+                if p[field]:
+                    current[name][field] = p[field]
+        else:
+            current[name] = p
+    save_namelist(list(current.values()))
     return jsonify({"ok": True, "persons": load_namelist()})
 
 

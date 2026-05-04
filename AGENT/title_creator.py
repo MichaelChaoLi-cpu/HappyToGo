@@ -26,16 +26,79 @@ Optional .input keys: title_name, authors, corresponding
 from __future__ import annotations
 
 import re
-import shutil
 import sys
 from pathlib import Path
 
-SCRIPT_DIR   = Path(__file__).parent
-PROJECT_ROOT = SCRIPT_DIR.parent
-INPUT_FILE   = PROJECT_ROOT / ".input"
-TEMPLATE_DOCX = PROJECT_ROOT / "CLASSICS" / "Title.docx"
-TEMP_DIR     = PROJECT_ROOT / "_temp"
-TEMP_MD      = TEMP_DIR / "Title.md"
+SCRIPT_DIR     = Path(__file__).parent
+PROJECT_ROOT   = SCRIPT_DIR.parent
+INPUT_FILE     = PROJECT_ROOT / ".input"
+TEMP_DIR       = PROJECT_ROOT / "_temp"
+TEMP_MD        = TEMP_DIR / "Title.md"
+NAMELIST_FILE  = PROJECT_ROOT / "INFOCENTER" / "NameList.json"
+
+# ---------------------------------------------------------------------------
+# Page / font constants (US Letter, 1.25" L/R, 1.0" T/B)
+# ---------------------------------------------------------------------------
+_EMU_INCH  = 914400
+_EMU_PT    = 12700
+
+PAGE_WIDTH       = int(8.5  * _EMU_INCH)   # 7772400
+PAGE_HEIGHT      = int(11.0 * _EMU_INCH)   # 10058400
+MARGIN_LR        = int(1.25 * _EMU_INCH)   # 1143000
+MARGIN_TB        = int(1.0  * _EMU_INCH)   # 914400
+
+SIZE_TITLE       = 16 * _EMU_PT   # 203200
+SIZE_BODY        = 12 * _EMU_PT   # 152400
+SIZE_NORMAL      = int(10.5 * _EMU_PT)  # 133350
+FONT_SERIF       = "Times New Roman"
+
+SPACE_BEFORE_6PT = int(6 * _EMU_PT)   # 76200
+
+
+# ---------------------------------------------------------------------------
+# NameList helpers
+# ---------------------------------------------------------------------------
+def load_namelist() -> dict[str, dict]:
+    """Return {name: {institution, email, address}} from NameList.json."""
+    import json
+    if not NAMELIST_FILE.exists():
+        return {}
+    try:
+        persons = json.loads(NAMELIST_FILE.read_text(encoding="utf-8"))
+        return {
+            p.get("name", "").strip(): {
+                "institution": p.get("institution", "").strip(),
+                "email":       p.get("email", "").strip(),
+                "address":     p.get("address", "").strip(),
+            }
+            for p in persons if p.get("name", "").strip()
+        }
+    except Exception:
+        return {}
+
+
+def derive_affiliations(authors: list[str], namelist: dict[str, dict]) -> tuple[list[str], dict[str, str]]:
+    """
+    Build affiliation list and per-author affiliation-number map.
+    Authors sharing the same institution get the same [N].
+    Returns (["[1] Inst A", "[2] Inst B", ...], {author_name: "1", ...})
+    """
+    inst_to_num: dict[str, str] = {}
+    aff_map: dict[str, str] = {}
+    counter = 1
+
+    for name in authors:
+        inst = namelist.get(name, {}).get("institution", "")
+        if inst and inst not in inst_to_num:
+            inst_to_num[inst] = str(counter)
+            counter += 1
+        aff_map[name] = inst_to_num.get(inst, "1") if inst else "1"
+
+    affiliations = [f"[{num}] {inst}" for inst, num in
+                    sorted(inst_to_num.items(), key=lambda x: int(x[1]))]
+    if not affiliations:
+        affiliations = ["[1] "]
+    return affiliations, aff_map
 
 
 # ---------------------------------------------------------------------------
@@ -65,59 +128,20 @@ def extract_title(docx_path: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Read full content from the template docx → dict of sections
-# ---------------------------------------------------------------------------
-def read_template_sections(template_path: Path) -> dict:
-    from docx import Document
-    doc = Document(str(template_path))
-    paras = [p.text for p in doc.paragraphs]
-
-    sections = {"title": "", "authors": "", "affiliations": [], "corresponding": ""}
-
-    for i, text in enumerate(paras):
-        t = text.strip()
-        if i == 0:
-            sections["title"] = t
-        elif t == "Authors" and i + 1 < len(paras):
-            sections["authors"] = paras[i + 1].strip()
-        elif t.startswith("Affiliations") and i + 1 < len(paras):
-            j = i + 1
-            while j < len(paras) and paras[j].strip() and not paras[j].strip().startswith("*"):
-                aff = paras[j].strip()
-                # Template stores "1 Description" (superscript merged) → reformat as "[1] Description"
-                m2 = re.match(r'^(\d+)\s+(.*)', aff)
-                if m2:
-                    aff = f"[{m2.group(1)}] {m2.group(2)}"
-                sections["affiliations"].append(aff)
-                j += 1
-        elif t.startswith("* Correspondent to:"):
-            raw = t.replace("* Correspondent to: ", "", 1)
-            # raw = "Name, email, address" → convert to "Name | email | address"
-            m2 = re.match(r'(.+?),\s*(\S+@\S+),\s*(.*)', raw)
-            if m2:
-                sections["corresponding"] = f"{m2.group(1)} | {m2.group(2)} | {m2.group(3)}"
-            else:
-                sections["corresponding"] = raw
-
-    return sections
-
-
-# ---------------------------------------------------------------------------
-# Write _temp/Title.md with full content
-# authors list: plain names; corresponding marked with *
-# affiliations: list of "[N] Description" strings
-# corresponding_text: "Name | email | address"
+# Write _temp/Title.md
 # ---------------------------------------------------------------------------
 def write_temp_md(title: str, authors: list[str], corresponding: str,
-                  affiliations: list[str], corresponding_text: str):
+                  affiliations: list[str], corresponding_text: str,
+                  aff_map: dict[str, str] | None = None):
     TEMP_DIR.mkdir(exist_ok=True)
 
+    def _aff_num(name: str) -> str:
+        return aff_map[name] if aff_map and name in aff_map else "1"
+
     author_line = ", ".join(
-        f"{a}*[1]" if a == corresponding else f"{a}[1]"
+        f"{a}*[{_aff_num(a)}]" if a == corresponding else f"{a}[{_aff_num(a)}]"
         for a in authors
     )
-
-    # Format affiliations block
     aff_block = "\n".join(affiliations) if affiliations else "[1] "
 
     md = (
@@ -131,7 +155,7 @@ def write_temp_md(title: str, authors: list[str], corresponding: str,
 
 
 # ---------------------------------------------------------------------------
-# Parse _temp/Title.md → dict with title / authors / corresponding / affiliations
+# Parse _temp/Title.md
 # ---------------------------------------------------------------------------
 def read_temp_md() -> dict:
     text = TEMP_MD.read_text(encoding="utf-8")
@@ -145,16 +169,14 @@ def read_temp_md() -> dict:
     aff_raw      = get_section("Affiliations")
     corr_raw     = get_section("Corresponding")
 
-    # Parse authors: "Name*[N]" or "Name[N]"
     authors      = []
     corresponding = ""
-    aff_map      = {}   # name → affiliation number
+    aff_map      = {}
 
     for token in re.split(r",\s*", authors_raw):
         token = token.strip()
         if not token:
             continue
-        # extract affiliation number [N]
         m = re.search(r"\[(\d+)\]", token)
         aff_num = m.group(1) if m else "1"
         name = re.sub(r"\[\d+\]", "", token).rstrip("*").strip()
@@ -167,15 +189,9 @@ def read_temp_md() -> dict:
     if not corresponding and authors:
         corresponding = authors[-1]
 
-    # Parse affiliations: "[N] Description"
-    affiliations = []
-    for line in aff_raw.splitlines():
-        line = line.strip()
-        if line:
-            affiliations.append(line)
+    affiliations = [line.strip() for line in aff_raw.splitlines() if line.strip()]
 
-    # Parse corresponding: "Name | email | address"
-    corr_parts = [p.strip() for p in corr_raw.split("|")]
+    corr_parts   = [p.strip() for p in corr_raw.split("|")]
     corr_name    = corr_parts[0] if len(corr_parts) > 0 else corresponding
     corr_email   = corr_parts[1] if len(corr_parts) > 1 else ""
     corr_address = corr_parts[2] if len(corr_parts) > 2 else ""
@@ -193,121 +209,137 @@ def read_temp_md() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Apply to docx
+# Build Title.docx from scratch
 # ---------------------------------------------------------------------------
-def update_title(doc, title: str):
-    for para in doc.paragraphs:
-        if not para.text.strip():
-            continue
-        r0 = para.runs[0]
-        bold, size, fname = r0.bold, r0.font.size, r0.font.name
-        for r in para.runs:
-            r.text = ""
-        r0.text  = title
-        r0.bold  = bold
-        r0.font.size = size
-        if fname:
-            r0.font.name = fname
-        break
-
-
-def update_authors_para(doc, authors: list[str], aff_map: dict, corresponding: str):
-    authors_para = None
-    for i, para in enumerate(doc.paragraphs):
-        if para.text.strip() == "Authors" and i + 1 < len(doc.paragraphs):
-            authors_para = doc.paragraphs[i + 1]
-            break
-    if authors_para is None:
-        print("[!] Authors paragraph not found")
-        return
-
-    for run in list(authors_para.runs):
-        run._element.getparent().remove(run._element)
-
-    def add_run(para, text, superscript=False):
-        r = para.add_run(text)
-        if superscript:
-            r.font.superscript = True
-
-    for i, name in enumerate(authors):
-        display = f"{name}*" if name == corresponding else name
-        add_run(authors_para, display)
-        add_run(authors_para, aff_map.get(name, "1"), superscript=True)
-        if i < len(authors) - 1:
-            add_run(authors_para, ", ")
-
-
-def update_affiliations(doc, affiliations: list[str]):
-    """Replace each affiliation line. [N] prefix → superscript N."""
-    for i, para in enumerate(doc.paragraphs):
-        if para.text.strip().startswith("Affiliations"):
-            # Collect the affiliation paragraphs that follow
-            aff_paras = []
-            j = i + 1
-            while j < len(doc.paragraphs) and doc.paragraphs[j].text.strip() \
-                    and not doc.paragraphs[j].text.strip().startswith("*"):
-                aff_paras.append(doc.paragraphs[j])
-                j += 1
-
-            # Update existing paragraphs or just update in place
-            for k, aff_line in enumerate(affiliations):
-                m = re.match(r"\[(\d+)\]\s*(.*)", aff_line)
-                num  = m.group(1) if m else str(k + 1)
-                desc = m.group(2) if m else aff_line
-
-                if k < len(aff_paras):
-                    para_aff = aff_paras[k]
-                    for run in list(para_aff.runs):
-                        run._element.getparent().remove(run._element)
-                    r = para_aff.add_run(num)
-                    r.font.superscript = True
-                    para_aff.add_run(f" {desc}")
-            break
-
-
-def update_corresponding_line(doc, corr_name: str, corr_email: str, corr_address: str):
+def build_docx(data: dict, output_path: Path):
+    from docx import Document
+    from docx.shared import Pt  # noqa: F401 — kept for potential future use
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
 
-    for para in doc.paragraphs:
-        if not para.text.startswith("* Correspondent to:"):
-            continue
+    doc = Document()
 
-        # Update run[1]: "Correspondent to: Name, "
-        for run in para.runs:
-            if run.text.startswith("Correspondent to:"):
-                run.text = f"Correspondent to: {corr_name}, "
-                break
+    # Page layout
+    sec = doc.sections[0]
+    sec.page_width   = PAGE_WIDTH
+    sec.page_height  = PAGE_HEIGHT
+    sec.left_margin  = MARGIN_LR
+    sec.right_margin = MARGIN_LR
+    sec.top_margin   = MARGIN_TB
+    sec.bottom_margin = MARGIN_TB
 
-        # Update hyperlink text (email)
-        if corr_email:
-            for child in para._element:
-                if child.tag.endswith("}hyperlink"):
-                    for t_elem in child.iter(qn("w:t")):
-                        t_elem.text = corr_email
-                    break
+    # Remove default empty paragraph that Document() creates
+    for p in doc.paragraphs:
+        p._element.getparent().remove(p._element)
 
-        # Update address: collapse all remaining runs (after hyperlink) into one
-        if corr_address:
-            runs_after = []
-            found_hyperlink = False
-            for child in para._element:
-                tag = child.tag.split("}")[-1]
-                if tag == "hyperlink":
-                    found_hyperlink = True
-                elif found_hyperlink and tag == "r":
-                    runs_after.append(child)
+    def _set_spacing(para, space_before=0, space_after=0, line_spacing=None):
+        fmt = para.paragraph_format
+        fmt.space_before = space_before
+        fmt.space_after  = space_after
+        if line_spacing is not None:
+            # Set multiple line spacing via OOXML directly (lineRule="auto", line=240*factor)
+            pPr = para._element.get_or_add_pPr()
+            spacing = pPr.get_or_add_spacing()
+            spacing.set(qn("w:lineRule"), "auto")
+            spacing.set(qn("w:line"), str(int(line_spacing * 240)))
 
-            if runs_after:
-                # Set first run to ", address", clear the rest
-                from docx.oxml.ns import qn as _qn
-                first_t = runs_after[0].find(_qn("w:t"))
-                if first_t is not None:
-                    first_t.text = f", {corr_address}"
-                for r in runs_after[1:]:
-                    t = r.find(_qn("w:t"))
-                    if t is not None:
-                        t.text = ""
-        break
+    def _add_run(para, text, bold=None, superscript=False,
+                 size=SIZE_BODY, font_name=FONT_SERIF):
+        r = para.add_run(text)
+        r.bold = bold
+        r.font.superscript = superscript
+        r.font.size  = size
+        r.font.name  = font_name
+        return r
+
+    # ── Para 0: Title ──────────────────────────────────────────────────────
+    p_title = doc.add_paragraph()
+    p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_spacing(p_title, space_before=0, space_after=0, line_spacing=1.5)
+    _add_run(p_title, data["title"], bold=True, size=SIZE_TITLE)
+
+    # ── Para 1: "Authors" label ────────────────────────────────────────────
+    p_authors_label = doc.add_paragraph()
+    p_authors_label.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _set_spacing(p_authors_label, space_before=SPACE_BEFORE_6PT, space_after=0)
+    _add_run(p_authors_label, "Authors", bold=True)
+
+    # ── Para 2: Author names with superscript affiliation numbers ──────────
+    p_authors = doc.add_paragraph()
+    p_authors.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    _set_spacing(p_authors, space_before=0, space_after=0)
+
+    for i, name in enumerate(data["authors"]):
+        display = f"{name}*" if name == data["corresponding"] else name
+        _add_run(p_authors, display)
+        _add_run(p_authors, data["aff_map"].get(name, "1"), superscript=True)
+        if i < len(data["authors"]) - 1:
+            _add_run(p_authors, ", ")
+
+    # ── Para 3: Empty separator ────────────────────────────────────────────
+    p_sep = doc.add_paragraph()
+    _set_spacing(p_sep, space_before=0, space_after=0)
+
+    # ── Para 4: "Affiliations" label ───────────────────────────────────────
+    p_aff_label = doc.add_paragraph()
+    p_aff_label.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _set_spacing(p_aff_label, space_before=0, space_after=0)
+    _add_run(p_aff_label, "Affiliations", bold=True)
+
+    # ── Para 5+: Affiliation lines ─────────────────────────────────────────
+    for aff_line in data["affiliations"]:
+        m = re.match(r"\[(\d+)\]\s*(.*)", aff_line)
+        num  = m.group(1) if m else "1"
+        desc = m.group(2) if m else aff_line
+
+        p_aff = doc.add_paragraph()
+        p_aff.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        _set_spacing(p_aff, space_before=0, space_after=0)
+        _add_run(p_aff, num, superscript=True)
+        _add_run(p_aff, f" {desc}")
+
+    # ── Para N: Corresponding line ─────────────────────────────────────────
+    p_corr = doc.add_paragraph()
+    p_corr.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _set_spacing(p_corr, space_before=0, space_after=0)
+
+    _add_run(p_corr, "* ")
+    _add_run(p_corr, f"Correspondent to: {data['corr_name']}, ")
+
+    # Hyperlink for email
+    if data["corr_email"]:
+        url   = f"mailto:{data['corr_email']}"
+        r_id  = p_corr.part.relate_to(
+            url,
+            "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+            is_external=True,
+        )
+        hl = OxmlElement("w:hyperlink")
+        hl.set(qn("r:id"), r_id)
+
+        hl_run = OxmlElement("w:r")
+        rPr = OxmlElement("w:rPr")
+        rFonts = OxmlElement("w:rFonts")
+        rFonts.set(qn("w:ascii"), FONT_SERIF)
+        rFonts.set(qn("w:hAnsi"), FONT_SERIF)
+        rPr.append(rFonts)
+        sz = OxmlElement("w:sz")
+        sz.set(qn("w:val"), str(SIZE_BODY // (_EMU_PT // 2)))  # half-points
+        rPr.append(sz)
+        hl_run.append(rPr)
+
+        t_elem = OxmlElement("w:t")
+        t_elem.text = data["corr_email"]
+        hl_run.append(t_elem)
+        hl.append(hl_run)
+        p_corr._element.append(hl)
+
+    if data["corr_address"]:
+        _add_run(p_corr, f", {data['corr_address']}")
+
+    doc.save(str(output_path))
+    print(f"[✓] Title page saved: {output_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +350,6 @@ def main():
 
     if not INPUT_FILE.exists():
         sys.exit(f"[Error] .input not found: {INPUT_FILE}")
-    if not TEMPLATE_DOCX.exists():
-        sys.exit(f"[Error] Template not found: {TEMPLATE_DOCX}")
 
     cfg          = parse_input(INPUT_FILE)
     article_link = (cfg.get("article_link") or "").strip()
@@ -340,59 +370,33 @@ def main():
             sys.exit(f"[Error] No markdown found at {TEMP_MD}. Run without --build first.")
         print(f"[→] Using existing markdown: {TEMP_MD}")
     else:
-        # Pull base data
-        title = extract_title(manuscript_path)
-        tmpl  = read_template_sections(TEMPLATE_DOCX)
-
-        # Authors from .input; fall back to template
+        title         = extract_title(manuscript_path)
         authors: list[str] = cfg.get("authors") or []
         corresponding: str = (cfg.get("corresponding") or "").strip()
 
         if not authors:
-            # Parse template author line: "Chao Li1, ..."  (superscripts merged into text)
-            raw = tmpl["authors"]
-            authors = [re.sub(r"\d+$", "", a.rstrip("*").strip()) for a in raw.split(",")]
-            corresponding = next(
-                (re.sub(r"\d+$", "", a.rstrip("*").strip()) for a in raw.split(",") if "*" in a),
-                authors[-1] if authors else ""
-            )
+            authors       = ["Author"]
+            corresponding = "Author"
         elif not corresponding:
             corresponding = authors[-1]
 
-        # Build corresponding_text from template (already "Name | email | address")
-        corr_text = tmpl["corresponding"]
-        # Replace name part (before first |) with the actual corresponding author
-        corr_text = re.sub(r"^[^|]+", f"{corresponding} ", corr_text)
+        # Derive affiliations and contact info from NameList
+        namelist = load_namelist()
+        affiliations, aff_map = derive_affiliations(authors, namelist)
 
-        write_temp_md(title, authors, corresponding, tmpl["affiliations"], corr_text)
+        corr_info    = namelist.get(corresponding, {})
+        corr_email   = corr_info.get("email", "")
+        corr_address = corr_info.get("address", "")
+        corr_text    = f"{corresponding} | {corr_email} | {corr_address}"
 
-    # Read (possibly edited) markdown and build docx
+        write_temp_md(title, authors, corresponding, affiliations, corr_text, aff_map)
+
     data = read_temp_md()
     print(f"[→] Title:        {data['title'][:70]}...")
     print(f"[→] Authors:      {data['authors']}")
     print(f"[→] Corresponding:{data['corresponding']}")
 
-    shutil.copy2(str(TEMPLATE_DOCX), str(output_path))
-
-    from docx import Document
-    doc = Document(str(output_path))
-
-    update_title(doc, data["title"])
-    update_authors_para(doc, data["authors"], data["aff_map"], data["corresponding"])
-    update_affiliations(doc, data["affiliations"])
-    update_corresponding_line(doc, data["corr_name"], data["corr_email"], data["corr_address"])
-
-    doc.save(str(output_path))
-    print(f"[✓] Title page saved: {output_path}")
-
-    # Copy DeclarationStatement.docx from CLASSICS to the manuscript folder
-    decl_src = PROJECT_ROOT / "CLASSICS" / "DeclarationStatement.docx"
-    decl_dst = Path(article_link) / "DeclarationStatement.docx"
-    if decl_src.exists():
-        shutil.copy2(str(decl_src), str(decl_dst))
-        print(f"[✓] DeclarationStatement copied: {decl_dst}")
-    else:
-        print(f"[!] DeclarationStatement.docx not found in CLASSICS — skipping")
+    build_docx(data, output_path)
 
 
 if __name__ == "__main__":
